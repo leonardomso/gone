@@ -21,48 +21,71 @@ func (i ResultItem) FilterValue() string {
 // Title returns the main display text for the item.
 // Implements list.DefaultItem interface.
 func (i ResultItem) Title() string {
+	// Show link text if available, otherwise URL
+	if text := truncateText(i.Result.Link.Text, 60); text != "" {
+		return fmt.Sprintf("%q", text)
+	}
 	return i.Result.Link.URL
+}
+
+// truncateText shortens text to maxLen characters, adding "..." if truncated.
+func truncateText(text string, maxLen int) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen-3] + "..."
 }
 
 // Description returns secondary text for the item.
 // Implements list.DefaultItem interface.
 func (i ResultItem) Description() string {
 	r := i.Result
+
+	// If we're showing link text in Title, show URL in description
+	url := ""
+	if r.Link.Text != "" {
+		url = truncateText(r.Link.URL, 50) + " | "
+	}
+
 	switch r.Status {
 	case checker.StatusAlive:
-		return fmt.Sprintf("[%d] %s", r.StatusCode, r.Link.FilePath)
+		return fmt.Sprintf("%s[%d] %s", url, r.StatusCode, r.Link.FilePath)
 
 	case checker.StatusRedirect:
 		finalURL := r.FinalURL
-		if len(finalURL) > 50 {
-			finalURL = finalURL[:47] + "..."
+		if len(finalURL) > 40 {
+			finalURL = finalURL[:37] + "..."
 		}
-		return fmt.Sprintf("→ %s | %s", finalURL, r.Link.FilePath)
+		return fmt.Sprintf("%s→ %s | %s", url, finalURL, r.Link.FilePath)
 
 	case checker.StatusBlocked:
-		return fmt.Sprintf("403 Forbidden | %s", r.Link.FilePath)
+		return fmt.Sprintf("%s403 Forbidden | %s", url, r.Link.FilePath)
 
 	case checker.StatusDead:
 		if r.StatusCode > 0 {
-			return fmt.Sprintf("[%d] %s", r.StatusCode, r.Link.FilePath)
+			return fmt.Sprintf("%s[%d] %s", url, r.StatusCode, r.Link.FilePath)
 		}
-		return fmt.Sprintf("Dead | %s", r.Link.FilePath)
+		return fmt.Sprintf("%sDead | %s", url, r.Link.FilePath)
 
 	case checker.StatusError:
 		errMsg := r.Error
-		if len(errMsg) > 40 {
-			errMsg = errMsg[:37] + "..."
+		if len(errMsg) > 30 {
+			errMsg = errMsg[:27] + "..."
 		}
-		return fmt.Sprintf("Error: %s | %s", errMsg, r.Link.FilePath)
+		return fmt.Sprintf("%sError: %s | %s", url, errMsg, r.Link.FilePath)
 
 	case checker.StatusDuplicate:
 		if r.DuplicateOf != nil {
-			return fmt.Sprintf("Same as %s | %s", r.DuplicateOf.Link.FilePath, r.Link.FilePath)
+			return fmt.Sprintf("%sSame as %s | %s", url, r.DuplicateOf.Link.FilePath, r.Link.FilePath)
 		}
-		return fmt.Sprintf("Duplicate | %s", r.Link.FilePath)
+		return fmt.Sprintf("%sDuplicate | %s", url, r.Link.FilePath)
 
 	default:
-		return r.Link.FilePath
+		return url + r.Link.FilePath
 	}
 }
 
@@ -122,6 +145,12 @@ func (i ResultItem) DetailView() string {
 		}
 		b.WriteString("│\n")
 		b.WriteString(fmt.Sprintf("│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description())))
+	}
+
+	// Link text if available
+	if text := truncateText(r.Link.Text, 60); text != "" {
+		b.WriteString("│\n")
+		b.WriteString(fmt.Sprintf("│ %s  %q\n", DetailLabelStyle.Render("Text:"), text))
 	}
 
 	// File location

@@ -48,6 +48,7 @@ type jsonResult struct {
 	URL           string         `json:"url"`
 	FilePath      string         `json:"file_path"`
 	Line          int            `json:"line,omitempty"`
+	Text          string         `json:"text,omitempty"`
 	StatusCode    int            `json:"status_code"`
 	Status        string         `json:"status"`
 	Error         string         `json:"error,omitempty"`
@@ -206,6 +207,7 @@ func runCheck(_ *cobra.Command, args []string) {
 			URL:      pl.URL,
 			FilePath: pl.FilePath,
 			Line:     pl.Line,
+			Text:     pl.Text,
 		})
 	}
 
@@ -352,6 +354,7 @@ func outputJSON(files []string, results []checker.Result, summary checker.Summar
 			URL:        r.Link.URL,
 			FilePath:   r.Link.FilePath,
 			Line:       r.Link.Line,
+			Text:       r.Link.Text,
 			StatusCode: r.StatusCode,
 			Status:     r.Status.String(),
 			Error:      r.Error,
@@ -530,6 +533,9 @@ func printResult(r checker.Result) {
 
 func printAliveResult(r checker.Result) {
 	fmt.Printf("  [%d] %s\n", r.StatusCode, r.Link.URL)
+	if text := truncateText(r.Link.Text); text != "" {
+		fmt.Printf("       Text: %q\n", text)
+	}
 	fmt.Printf("       File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
 		fmt.Printf(":%d", r.Link.Line)
@@ -540,6 +546,10 @@ func printAliveResult(r checker.Result) {
 
 func printWarningResult(r checker.Result) {
 	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
+
+	if text := truncateText(r.Link.Text); text != "" {
+		fmt.Printf("       Text: %q\n", text)
+	}
 
 	if r.Status == checker.StatusRedirect && len(r.RedirectChain) > 0 {
 		fmt.Printf("       Chain: %s\n", formatRedirectChain(r))
@@ -556,6 +566,9 @@ func printWarningResult(r checker.Result) {
 
 func printDeadResult(r checker.Result) {
 	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
+	if text := truncateText(r.Link.Text); text != "" {
+		fmt.Printf("       Text: %q\n", text)
+	}
 	fmt.Printf("       File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
 		fmt.Printf(":%d", r.Link.Line)
@@ -570,6 +583,9 @@ func printDeadResult(r checker.Result) {
 
 func printDuplicateResult(r checker.Result) {
 	fmt.Printf("  [DUPLICATE] %s\n", r.Link.URL)
+	if text := truncateText(r.Link.Text); text != "" {
+		fmt.Printf("              Text: %q\n", text)
+	}
 	fmt.Printf("              File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
 		fmt.Printf(":%d", r.Link.Line)
@@ -593,6 +609,20 @@ func formatRedirectChain(r checker.Result) string {
 	}
 	parts = append(parts, fmt.Sprintf("%d", r.FinalStatus))
 	return strings.Join(parts, " → ")
+}
+
+// truncateText shortens text to 50 characters, adding "..." if truncated.
+// Returns empty string if input is empty or only whitespace.
+func truncateText(text string) string {
+	const maxLen = 50
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen-3] + "..."
 }
 
 // Helper filter functions for slices.

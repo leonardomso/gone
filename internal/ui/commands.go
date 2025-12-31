@@ -33,6 +33,7 @@ func ExtractLinksCmd(files []string) tea.Cmd {
 				URL:      pl.URL,
 				FilePath: pl.FilePath,
 				Line:     pl.Line,
+				Text:     pl.Text,
 			}
 		}
 

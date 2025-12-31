@@ -92,6 +92,7 @@ type Link struct {
 	URL      string // The URL to check
 	FilePath string // Source file where the link was found
 	Line     int    // Line number in the source file (0 if unknown)
+	Text     string // Link text (e.g., "Click here") for display purposes
 }
 
 // Result represents the outcome of checking a single link.
