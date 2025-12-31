@@ -19,11 +19,11 @@ var interactiveCmd = &cobra.Command{
 If no path is provided, scans the current directory.
 
 Navigate through results, see progress in real-time, and 
-filter dead links by type.
+filter results by type.
 
 Controls:
   ↑/↓ or j/k    Navigate through results
-  f             Cycle through filters (All → Errors → 4xx → 5xx → 3xx)
+  f             Cycle through filters (All Issues → Warnings → Dead → Duplicates)
   ?             Toggle help
   q             Quit`,
 	Args: cobra.MaximumNArgs(1),

@@ -19,10 +19,9 @@ type Options struct {
 	// Default: 2
 	MaxRetries int
 
-	// FollowRedirects determines if 3xx responses are considered alive.
-	// If false, redirects are reported as dead links.
-	// Default: false
-	FollowRedirects bool
+	// MaxRedirects is the maximum number of redirects to follow.
+	// Default: 10
+	MaxRedirects int
 
 	// UserAgent is the User-Agent header sent with requests.
 	// Some servers block requests without a proper User-Agent.
@@ -33,11 +32,11 @@ type Options struct {
 // DefaultOptions returns sensible default configuration.
 func DefaultOptions() Options {
 	return Options{
-		Concurrency:     10,
-		Timeout:         10 * time.Second,
-		MaxRetries:      2,
-		FollowRedirects: false,
-		UserAgent:       "gone-link-checker/1.0",
+		Concurrency:  10,
+		Timeout:      10 * time.Second,
+		MaxRetries:   2,
+		MaxRedirects: 10,
+		UserAgent:    "gone-link-checker/1.0",
 	}
 }
 
@@ -59,9 +58,9 @@ func (o Options) WithMaxRetries(n int) Options {
 	return o
 }
 
-// WithFollowRedirects sets whether redirects are considered alive.
-func (o Options) WithFollowRedirects(follow bool) Options {
-	o.FollowRedirects = follow
+// WithMaxRedirects sets the maximum number of redirects to follow.
+func (o Options) WithMaxRedirects(n int) Options {
+	o.MaxRedirects = n
 	return o
 }
 
@@ -70,3 +69,7 @@ func (o Options) WithUserAgent(ua string) Options {
 	o.UserAgent = ua
 	return o
 }
+
+// BrowserUserAgent is a realistic browser User-Agent for bypassing bot detection.
+const BrowserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

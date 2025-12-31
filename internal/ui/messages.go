@@ -10,8 +10,10 @@ type FilesFoundMsg struct {
 
 // LinksExtractedMsg is sent when links have been extracted from files.
 type LinksExtractedMsg struct {
-	Links []checker.Link
-	Err   error
+	Links      []checker.Link
+	UniqueURLs int // Number of unique URLs to check
+	Duplicates int // Number of duplicate occurrences
+	Err        error
 }
 
 // LinkCheckedMsg is sent when a single link has been checked.

@@ -35,8 +35,26 @@ func ExtractLinksCmd(files []string) tea.Cmd {
 				Line:     pl.Line,
 			}
 		}
-		return LinksExtractedMsg{Links: links}
+
+		// Count unique URLs
+		uniqueURLs := countUniqueURLs(links)
+		duplicates := len(links) - uniqueURLs
+
+		return LinksExtractedMsg{
+			Links:      links,
+			UniqueURLs: uniqueURLs,
+			Duplicates: duplicates,
+		}
 	}
+}
+
+// countUniqueURLs returns the number of unique URLs in the slice.
+func countUniqueURLs(links []checker.Link) int {
+	seen := map[string]bool{}
+	for _, l := range links {
+		seen[l.URL] = true
+	}
+	return len(seen)
 }
 
 // CheckerState holds the state needed for checking links.

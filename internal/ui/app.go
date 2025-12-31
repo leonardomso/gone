@@ -32,32 +32,31 @@ const (
 type filterType int
 
 const (
-	filterAll filterType = iota
-	filterErrors
-	filter4xx
-	filter5xx
-	filter3xx
+	filterAll        filterType = iota // All non-alive (warnings + dead + duplicates)
+	filterWarnings                     // Redirects + Blocked
+	filterDead                         // Dead + Errors
+	filterDuplicates                   // Duplicates only
 )
+
+const filterCount = 4
 
 func (f filterType) String() string {
 	switch f {
 	case filterAll:
-		return "All"
-	case filterErrors:
-		return "Errors"
-	case filter4xx:
-		return "4xx"
-	case filter5xx:
-		return "5xx"
-	case filter3xx:
-		return "3xx"
+		return "All Issues"
+	case filterWarnings:
+		return "Warnings"
+	case filterDead:
+		return "Dead"
+	case filterDuplicates:
+		return "Duplicates"
 	default:
 		return "Unknown"
 	}
 }
 
 func (f filterType) Next() filterType {
-	return (f + 1) % 5
+	return (f + 1) % filterCount
 }
 
 // =============================================================================
@@ -72,13 +71,20 @@ type Model struct {
 	err      error
 
 	// Data
-	files     []string
-	links     []checker.Link
-	results   []checker.Result
-	deadLinks []checker.Result
+	files   []string
+	links   []checker.Link
+	results []checker.Result
+
+	// Categorized results
+	aliveLinks     []checker.Result
+	warningLinks   []checker.Result
+	deadLinks      []checker.Result
+	duplicateLinks []checker.Result
 
 	// Progress tracking
-	checked int
+	checked    int
+	uniqueURLs int
+	duplicates int
 
 	// Filter
 	filter filterType
@@ -124,7 +130,7 @@ func New(path string) Model {
 	delegate.Styles.SelectedDesc = StatusStyle
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
-	l.Title = "Dead Links"
+	l.Title = "Link Check Results"
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
 	l.SetShowHelp(false) // We use our own help
@@ -161,7 +167,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.list.SetSize(msg.Width, msg.Height-6) // Reserve space for header/footer
+		// Reserve space for header, summary, and detail panel
+		listHeight := msg.Height - 12
+		if listHeight < 5 {
+			listHeight = 5
+		}
+		m.list.SetSize(msg.Width, listHeight)
 		return m, nil
 
 	case spinner.TickMsg:
@@ -242,6 +253,9 @@ func (m *Model) handleLinksExtracted(msg LinksExtractedMsg) (tea.Model, tea.Cmd)
 		return m, nil
 	}
 	m.links = msg.Links
+	m.uniqueURLs = msg.UniqueURLs
+	m.duplicates = msg.Duplicates
+
 	if len(m.links) == 0 {
 		m.state = stateResults
 		return m, nil
@@ -253,9 +267,19 @@ func (m *Model) handleLinksExtracted(msg LinksExtractedMsg) (tea.Model, tea.Cmd)
 func (m *Model) handleLinkChecked(msg LinkCheckedMsg) (tea.Model, tea.Cmd) {
 	m.results = append(m.results, msg.Result)
 	m.checked++
-	if !msg.Result.IsAlive {
+
+	// Categorize the result
+	switch msg.Result.Status {
+	case checker.StatusAlive:
+		m.aliveLinks = append(m.aliveLinks, msg.Result)
+	case checker.StatusRedirect, checker.StatusBlocked:
+		m.warningLinks = append(m.warningLinks, msg.Result)
+	case checker.StatusDead, checker.StatusError:
 		m.deadLinks = append(m.deadLinks, msg.Result)
+	case checker.StatusDuplicate:
+		m.duplicateLinks = append(m.duplicateLinks, msg.Result)
 	}
+
 	return m, WaitForNextResultCmd(&m.checkerState)
 }
 
@@ -266,9 +290,9 @@ func (m *Model) handleAllChecksComplete() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateListItems updates the list with filtered dead links.
+// updateListItems updates the list with filtered results.
 func (m *Model) updateListItems() {
-	filtered := m.filterDeadLinks()
+	filtered := m.getFilteredResults()
 	items := make([]list.Item, len(filtered))
 	for i, r := range filtered {
 		items[i] = ResultItem{Result: r}
@@ -276,34 +300,25 @@ func (m *Model) updateListItems() {
 	m.list.SetItems(items)
 }
 
-// filterDeadLinks returns dead links based on current filter.
-func (m *Model) filterDeadLinks() []checker.Result {
-	if m.filter == filterAll {
+// getFilteredResults returns results based on current filter.
+func (m *Model) getFilteredResults() []checker.Result {
+	switch m.filter {
+	case filterAll:
+		// All non-alive: warnings + dead + duplicates
+		var all []checker.Result
+		all = append(all, m.warningLinks...)
+		all = append(all, m.deadLinks...)
+		all = append(all, m.duplicateLinks...)
+		return all
+	case filterWarnings:
+		return m.warningLinks
+	case filterDead:
 		return m.deadLinks
+	case filterDuplicates:
+		return m.duplicateLinks
+	default:
+		return nil
 	}
-
-	var filtered []checker.Result
-	for _, r := range m.deadLinks {
-		switch m.filter {
-		case filterErrors:
-			if r.Error != "" {
-				filtered = append(filtered, r)
-			}
-		case filter4xx:
-			if r.StatusCode >= 400 && r.StatusCode < 500 {
-				filtered = append(filtered, r)
-			}
-		case filter5xx:
-			if r.StatusCode >= 500 {
-				filtered = append(filtered, r)
-			}
-		case filter3xx:
-			if r.StatusCode >= 300 && r.StatusCode < 400 {
-				filtered = append(filtered, r)
-			}
-		}
-	}
-	return filtered
 }
 
 // =============================================================================
@@ -339,11 +354,7 @@ func (m Model) View() string {
 		s += m.spinner.View() + fmt.Sprintf(" Found %d file(s), extracting links...", len(m.files))
 
 	case stateChecking:
-		s += m.spinner.View() + fmt.Sprintf(" Checking links... %d/%d", m.checked, len(m.links))
-		s += "\n"
-		if len(m.deadLinks) > 0 {
-			s += ErrorStyle.Render(fmt.Sprintf("  Dead links found: %d", len(m.deadLinks)))
-		}
+		s += m.renderCheckingProgress()
 
 	case stateResults:
 		s += m.renderResults()
@@ -359,26 +370,66 @@ func (m Model) View() string {
 	return s
 }
 
+func (m Model) renderCheckingProgress() string {
+	var s string
+
+	if m.duplicates > 0 {
+		s += m.spinner.View() + fmt.Sprintf(" Checking %d unique URLs... %d/%d",
+			m.uniqueURLs, m.checked, len(m.links))
+	} else {
+		s += m.spinner.View() + fmt.Sprintf(" Checking links... %d/%d", m.checked, len(m.links))
+	}
+	s += "\n\n"
+
+	// Live category counts
+	s += fmt.Sprintf("  %s  %s  %s",
+		SuccessStyle.Render(fmt.Sprintf("✓ %d alive", len(m.aliveLinks))),
+		WarningStyle.Render(fmt.Sprintf("⚠ %d warnings", len(m.warningLinks))),
+		ErrorStyle.Render(fmt.Sprintf("✗ %d dead", len(m.deadLinks))))
+
+	return s
+}
+
 func (m Model) renderResults() string {
 	var s string
 
-	// Summary
-	s += fmt.Sprintf("Scanned %d file(s), checked %d link(s)\n", len(m.files), len(m.links))
+	// Summary line
+	s += fmt.Sprintf("Scanned %d file(s), checked %d link(s)", len(m.files), len(m.links))
+	if m.duplicates > 0 {
+		s += fmt.Sprintf(" (%d unique)", m.uniqueURLs)
+	}
+	s += "\n\n"
 
-	if len(m.deadLinks) == 0 {
-		s += "\n" + SuccessStyle.Render("All links are alive!")
+	// Category summary
+	s += fmt.Sprintf("%s | %s | %s | %s\n\n",
+		SuccessStyle.Render(fmt.Sprintf("✓ %d alive", len(m.aliveLinks))),
+		WarningStyle.Render(fmt.Sprintf("⚠ %d warnings", len(m.warningLinks))),
+		ErrorStyle.Render(fmt.Sprintf("✗ %d dead", len(m.deadLinks))),
+		DuplicateStyle.Render(fmt.Sprintf("◈ %d duplicates", len(m.duplicateLinks))))
+
+	// Check if everything is alive
+	if len(m.warningLinks) == 0 && len(m.deadLinks) == 0 && len(m.duplicateLinks) == 0 {
+		s += SuccessStyle.Render("All links are alive!")
 		return s
 	}
 
 	// Filter indicator
-	filteredCount := len(m.filterDeadLinks())
+	filteredCount := len(m.getFilteredResults())
+	totalIssues := len(m.warningLinks) + len(m.deadLinks) + len(m.duplicateLinks)
 	s += fmt.Sprintf("Filter: %s (%d/%d)\n\n",
 		SelectedStyle.Render(m.filter.String()),
 		filteredCount,
-		len(m.deadLinks))
+		totalIssues)
 
 	// List view
 	s += m.list.View()
+
+	// Detail panel for selected item
+	if selected := m.list.SelectedItem(); selected != nil {
+		if item, ok := selected.(ResultItem); ok {
+			s += "\n" + item.DetailView()
+		}
+	}
 
 	return s
 }
