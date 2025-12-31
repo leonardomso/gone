@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"gone/internal/checker"
+	"gone/internal/filter"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -104,11 +105,13 @@ type Model struct {
 	showHelp bool
 
 	// Config
-	path string
+	path      string
+	urlFilter *filter.Filter
 }
 
 // New creates and returns a new Model for the given path.
-func New(path string) Model {
+// Optional filter can be passed to ignore certain URLs.
+func New(path string, urlFilter *filter.Filter) Model {
 	if path == "" {
 		path = "."
 	}
@@ -137,13 +140,14 @@ func New(path string) Model {
 	l.Styles.Title = TitleStyle
 
 	return Model{
-		state:   stateScanning,
-		spinner: s,
-		list:    l,
-		help:    h,
-		keys:    k,
-		filter:  filterAll,
-		path:    path,
+		state:     stateScanning,
+		spinner:   s,
+		list:      l,
+		help:      h,
+		keys:      k,
+		filter:    filterAll,
+		path:      path,
+		urlFilter: urlFilter,
 	}
 }
 
@@ -249,9 +253,19 @@ func (m *Model) handleLinksExtracted(msg LinksExtractedMsg) (tea.Model, tea.Cmd)
 		m.state = stateResults
 		return m, nil
 	}
-	m.links = msg.Links
-	m.uniqueURLs = msg.UniqueURLs
-	m.duplicates = msg.Duplicates
+
+	// Apply filter if configured
+	filteredLinks := make([]checker.Link, 0, len(msg.Links))
+	for _, link := range msg.Links {
+		if m.urlFilter != nil && m.urlFilter.ShouldIgnore(link.URL, link.FilePath, link.Line) {
+			continue
+		}
+		filteredLinks = append(filteredLinks, link)
+	}
+
+	m.links = filteredLinks
+	m.uniqueURLs = countUniqueURLsFromLinks(filteredLinks)
+	m.duplicates = len(filteredLinks) - m.uniqueURLs
 
 	if len(m.links) == 0 {
 		m.state = stateResults
@@ -259,6 +273,15 @@ func (m *Model) handleLinksExtracted(msg LinksExtractedMsg) (tea.Model, tea.Cmd)
 	}
 	m.state = stateChecking
 	return m, StartCheckingCmd(m.links, &m.checkerState)
+}
+
+// countUniqueURLsFromLinks counts unique URLs in a slice of checker.Link.
+func countUniqueURLsFromLinks(links []checker.Link) int {
+	seen := map[string]bool{}
+	for _, l := range links {
+		seen[l.URL] = true
+	}
+	return len(seen)
 }
 
 func (m *Model) handleLinkChecked(msg LinkCheckedMsg) (tea.Model, tea.Cmd) {

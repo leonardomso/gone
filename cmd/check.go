@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gone/internal/checker"
+	"gone/internal/config"
+	"gone/internal/filter"
 	"gone/internal/parser"
 	"gone/internal/scanner"
 
@@ -16,11 +18,12 @@ import (
 
 // jsonOutput represents the JSON structure for output.
 type jsonOutput struct {
-	TotalFiles int          `json:"total_files"`
-	TotalLinks int          `json:"total_links"`
-	UniqueURLs int          `json:"unique_urls"`
-	Summary    jsonSummary  `json:"summary"`
-	Results    []jsonResult `json:"results"`
+	TotalFiles int           `json:"total_files"`
+	TotalLinks int           `json:"total_links"`
+	UniqueURLs int           `json:"unique_urls"`
+	Summary    jsonSummary   `json:"summary"`
+	Results    []jsonResult  `json:"results"`
+	Ignored    []jsonIgnored `json:"ignored,omitempty"`
 }
 
 type jsonSummary struct {
@@ -30,6 +33,15 @@ type jsonSummary struct {
 	Dead       int `json:"dead"`
 	Errors     int `json:"errors"`
 	Duplicates int `json:"duplicates"`
+	Ignored    int `json:"ignored,omitempty"`
+}
+
+type jsonIgnored struct {
+	URL    string `json:"url"`
+	File   string `json:"file"`
+	Line   int    `json:"line,omitempty"`
+	Reason string `json:"reason"`
+	Rule   string `json:"rule"`
 }
 
 type jsonResult struct {
@@ -60,6 +72,13 @@ var (
 	showWarnings bool
 	showDead     bool
 	showAll      bool
+
+	// Ignore flags.
+	ignoreDomains  []string
+	ignorePatterns []string
+	ignoreRegex    []string
+	showIgnored    bool
+	noConfig       bool
 )
 
 // checkCmd represents the check command.
@@ -86,7 +105,19 @@ Examples:
   gone check --warnings              # Show only warnings (redirects, blocked)
   gone check --dead                  # Show only dead links and errors
   gone check --concurrency=20        # Use 20 concurrent workers
-  gone check --timeout=30            # 30 second timeout per request`,
+  gone check --timeout=30            # 30 second timeout per request
+
+Ignore patterns:
+  gone check --ignore-domain=localhost,example.com
+  gone check --ignore-pattern="*.local/*"
+  gone check --ignore-regex=".*\\.test$"
+  gone check --show-ignored          # Show which URLs were ignored
+
+Config file (.gonerc.yaml):
+  ignore:
+    domains: [localhost, example.com]
+    patterns: ["*.local/*"]
+    regex: [".*\\.test$"]`,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runCheck,
 }
@@ -107,6 +138,18 @@ func init() {
 	checkCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 10, "Number of concurrent workers")
 	checkCmd.Flags().IntVarP(&timeout, "timeout", "t", 10, "Timeout per request in seconds")
 	checkCmd.Flags().IntVarP(&retries, "retries", "r", 2, "Number of retries for failed requests")
+
+	// Ignore options
+	checkCmd.Flags().StringSliceVar(&ignoreDomains, "ignore-domain", nil,
+		"Domains to ignore, includes subdomains (can be repeated or comma-separated)")
+	checkCmd.Flags().StringSliceVar(&ignorePatterns, "ignore-pattern", nil,
+		"Glob patterns to ignore (can be repeated)")
+	checkCmd.Flags().StringSliceVar(&ignoreRegex, "ignore-regex", nil,
+		"Regex patterns to ignore (can be repeated)")
+	checkCmd.Flags().BoolVar(&showIgnored, "show-ignored", false,
+		"Show which URLs were ignored and why")
+	checkCmd.Flags().BoolVar(&noConfig, "no-config", false,
+		"Skip loading .gonerc.yaml config file")
 }
 
 func runCheck(_ *cobra.Command, args []string) {
@@ -138,21 +181,37 @@ func runCheck(_ *cobra.Command, args []string) {
 
 	if len(parserLinks) == 0 {
 		if isJSON {
-			outputJSON(files, nil, checker.Summary{})
+			outputJSON(files, nil, checker.Summary{}, nil)
 		} else {
 			fmt.Println("No links found.")
 		}
 		return
 	}
 
-	// Convert parser.Link to checker.Link
-	links := make([]checker.Link, len(parserLinks))
-	for i, pl := range parserLinks {
-		links[i] = checker.Link{
+	// Load and create filter
+	urlFilter, err := createFilter()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Convert parser.Link to checker.Link, applying filter
+	links := make([]checker.Link, 0, len(parserLinks))
+	for _, pl := range parserLinks {
+		// Check if URL should be ignored
+		if urlFilter != nil && urlFilter.ShouldIgnore(pl.URL, pl.FilePath, pl.Line) {
+			continue
+		}
+		links = append(links, checker.Link{
 			URL:      pl.URL,
 			FilePath: pl.FilePath,
 			Line:     pl.Line,
-		}
+		})
+	}
+
+	ignoredCount := 0
+	if urlFilter != nil {
+		ignoredCount = urlFilter.IgnoredCount()
 	}
 
 	// Count unique URLs for progress display
@@ -160,12 +219,20 @@ func runCheck(_ *cobra.Command, args []string) {
 	duplicates := len(links) - uniqueURLs
 
 	if !isJSON {
-		if duplicates > 0 {
-			fmt.Printf("Found %d link(s), checking %d unique URLs (%d duplicates)...\n",
-				len(links), uniqueURLs, duplicates)
+		printProgressMessage(len(parserLinks), len(links), uniqueURLs, duplicates, ignoredCount)
+	}
+
+	// Handle case where all links were filtered out
+	if len(links) == 0 {
+		if isJSON {
+			outputJSON(files, nil, checker.Summary{}, urlFilter)
 		} else {
-			fmt.Printf("Found %d link(s), checking...\n", len(links))
+			fmt.Println("\nAll links were ignored by filter rules.")
+			if showIgnored && urlFilter != nil {
+				printIgnoredURLs(urlFilter)
+			}
 		}
+		return
 	}
 
 	// Create checker with configured options
@@ -182,14 +249,66 @@ func runCheck(_ *cobra.Command, args []string) {
 
 	// Output based on format flag
 	if isJSON {
-		outputJSON(files, results, summary)
+		outputJSON(files, results, summary, urlFilter)
 	} else {
-		outputText(results, summary)
+		outputText(results, summary, urlFilter)
 	}
 
 	// Exit with code 1 if dead links or errors found (not for warnings)
 	if summary.HasDeadLinks() {
 		os.Exit(1)
+	}
+}
+
+// createFilter builds a filter from config file and CLI flags.
+func createFilter() (*filter.Filter, error) {
+	var cfg *config.Config
+
+	// Load config file unless --no-config is set
+	if !noConfig {
+		var err error
+		cfg, err = config.Load()
+		if err != nil {
+			return nil, fmt.Errorf("loading config: %w", err)
+		}
+	} else {
+		cfg = &config.Config{}
+	}
+
+	// Merge CLI flags (additive)
+	cfg.Ignore.Domains = append(cfg.Ignore.Domains, ignoreDomains...)
+	cfg.Ignore.Patterns = append(cfg.Ignore.Patterns, ignorePatterns...)
+	cfg.Ignore.Regex = append(cfg.Ignore.Regex, ignoreRegex...)
+
+	// If no ignore rules, return nil (no filtering)
+	if cfg.IsEmpty() {
+		return nil, nil
+	}
+
+	// Create filter
+	return filter.New(filter.Config{
+		Domains:       cfg.Ignore.Domains,
+		GlobPatterns:  cfg.Ignore.Patterns,
+		RegexPatterns: cfg.Ignore.Regex,
+	})
+}
+
+// printProgressMessage shows the scanning progress with ignore info.
+func printProgressMessage(total, afterFilter, unique, duplicates, ignored int) {
+	var parts []string
+
+	if duplicates > 0 {
+		parts = append(parts, fmt.Sprintf("%d duplicates", duplicates))
+	}
+	if ignored > 0 {
+		parts = append(parts, fmt.Sprintf("%d ignored", ignored))
+	}
+
+	if len(parts) > 0 {
+		fmt.Printf("Found %d link(s), checking %d unique URLs (%s)...\n",
+			total, unique, strings.Join(parts, ", "))
+	} else {
+		fmt.Printf("Found %d link(s), checking...\n", afterFilter)
 	}
 }
 
@@ -203,10 +322,15 @@ func countUniqueURLs(links []checker.Link) int {
 }
 
 // outputJSON prints results as JSON.
-func outputJSON(files []string, results []checker.Result, summary checker.Summary) {
+func outputJSON(files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
+	ignoredCount := 0
+	if urlFilter != nil {
+		ignoredCount = urlFilter.IgnoredCount()
+	}
+
 	output := jsonOutput{
 		TotalFiles: len(files),
-		TotalLinks: summary.Total,
+		TotalLinks: summary.Total + ignoredCount,
 		UniqueURLs: summary.UniqueURLs,
 		Summary: jsonSummary{
 			Alive:      summary.Alive,
@@ -215,6 +339,7 @@ func outputJSON(files []string, results []checker.Result, summary checker.Summar
 			Dead:       summary.Dead,
 			Errors:     summary.Errors,
 			Duplicates: summary.Duplicates,
+			Ignored:    ignoredCount,
 		},
 		Results: []jsonResult{},
 	}
@@ -253,6 +378,19 @@ func outputJSON(files []string, results []checker.Result, summary checker.Summar
 		output.Results = append(output.Results, jr)
 	}
 
+	// Add ignored URLs if --show-ignored is set
+	if showIgnored && urlFilter != nil {
+		for _, ig := range urlFilter.IgnoredURLs() {
+			output.Ignored = append(output.Ignored, jsonIgnored{
+				URL:    ig.URL,
+				File:   ig.File,
+				Line:   ig.Line,
+				Reason: ig.Type,
+				Rule:   ig.Rule,
+			})
+		}
+	}
+
 	jsonBytes, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
@@ -288,10 +426,20 @@ func filterResults(results []checker.Result) []checker.Result {
 }
 
 // outputText prints results as human-readable text.
-func outputText(results []checker.Result, summary checker.Summary) {
+func outputText(results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
+	ignoredCount := 0
+	if urlFilter != nil {
+		ignoredCount = urlFilter.IgnoredCount()
+	}
+
 	fmt.Println()
-	fmt.Printf("Summary: %d alive | %d warnings | %d dead | %d duplicates\n\n",
-		summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
+	if ignoredCount > 0 {
+		fmt.Printf("Summary: %d alive | %d warnings | %d dead | %d duplicates | %d ignored\n\n",
+			summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates, ignoredCount)
+	} else {
+		fmt.Printf("Summary: %d alive | %d warnings | %d dead | %d duplicates\n\n",
+			summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
+	}
 
 	filtered := filterResults(results)
 
@@ -305,6 +453,11 @@ func outputText(results []checker.Result, summary checker.Summary) {
 			fmt.Println("No dead links found.")
 		default:
 			fmt.Println("All links are alive!")
+		}
+
+		// Show ignored URLs if requested
+		if showIgnored && urlFilter != nil {
+			printIgnoredURLs(urlFilter)
 		}
 		return
 	}
@@ -324,6 +477,30 @@ func outputText(results []checker.Result, summary checker.Summary) {
 		for _, r := range filtered {
 			printResult(r)
 		}
+	}
+
+	// Show ignored URLs if requested
+	if showIgnored && urlFilter != nil {
+		printIgnoredURLs(urlFilter)
+	}
+}
+
+// printIgnoredURLs displays the list of ignored URLs.
+func printIgnoredURLs(urlFilter *filter.Filter) {
+	ignored := urlFilter.IgnoredURLs()
+	if len(ignored) == 0 {
+		return
+	}
+
+	fmt.Printf("\n=== Ignored URLs (%d) ===\n\n", len(ignored))
+	for _, ig := range ignored {
+		fmt.Printf("  [IGNORED] %s\n", ig.URL)
+		fmt.Printf("            File: %s", ig.File)
+		if ig.Line > 0 {
+			fmt.Printf(":%d", ig.Line)
+		}
+		fmt.Println()
+		fmt.Printf("            Reason: %s %q\n\n", ig.Type, ig.Rule)
 	}
 }
 
