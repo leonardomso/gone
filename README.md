@@ -1,20 +1,53 @@
 # gone
 
-A fast, concurrent dead link detector for markdown files.
+**Fast, concurrent dead link detector for markdown files.**
 
 [![Test](https://github.com/leonardomso/gone/actions/workflows/test.yml/badge.svg)](https://github.com/leonardomso/gone/actions/workflows/test.yml)
 [![Lint](https://github.com/leonardomso/gone/actions/workflows/lint.yml/badge.svg)](https://github.com/leonardomso/gone/actions/workflows/lint.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/leonardomso/gone)](https://goreportcard.com/report/github.com/leonardomso/gone)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Features
+Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, checks if they're still alive, and helps you fix the ones that aren't.
 
-- **Fast concurrent checking** - Configurable worker pool for parallel requests
-- **Multiple output formats** - JSON, YAML, XML, JUnit, Markdown
-- **Interactive TUI** - Real-time progress with filtering and navigation
-- **Auto-fix redirects** - Automatically update URLs to their final destinations
-- **Smart filtering** - Ignore domains, glob patterns, or regex
-- **CI/CD ready** - Proper exit codes and machine-readable output
+<p align="center">
+  <!-- TODO: Add logo here -->
+</p>
+
+## Here's a list of powerful features:
+
+- **Fast concurrent checking.** Check hundreds of URLs at the same time. Configure the number of workers based on your network. Large documentation sites take seconds, not minutes.
+
+- **Interactive terminal UI.** Watch progress in real-time. Navigate results with vim-style keys, filter by status, and explore issues without leaving your terminal. It's like `htop` for your links.
+
+- **Automatic redirect fixing.** Found a redirect? `gone fix` updates your markdown to use the final URL. Preview changes first with `--dry-run`, confirm each file interactively, or let it fix everything with `--yes`.
+
+- **Smart deduplication.** Same URL in 50 files? It gets checked once. Results map back to every occurrence. Less waiting, fewer rate limits.
+
+- **Flexible ignore rules.** Skip localhost, staging environments, or that one URL that's always flaky. Use domains, glob patterns, or regex. Set them in `.gonerc.yaml` or pass them as flags.
+
+- **Multiple output formats.** JSON, YAML, XML, JUnit, Markdown—pick your favorite. The format is auto-detected from the file extension, or set it explicitly with `--format`.
+
+- **Markdown-aware parsing.** Finds links in `[text](url)`, reference-style `[text][ref]`, autolinks `<url>`, and HTML `<a>` tags. Knows to skip URLs inside code blocks.
+
+- **CI/CD friendly.** Exit code 0 means all good. Exit code 1 means dead links. JUnit output works with GitHub Actions, GitLab CI, Jenkins, and everything else.
+
+<p align="center">
+  <!-- TODO: Add demo GIF here -->
+</p>
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Commands](#commands)
+  - [gone check](#gone-check)
+  - [gone interactive](#gone-interactive)
+  - [gone fix](#gone-fix)
+- [Configuration](#configuration)
+- [Output Formats](#output-formats)
+- [CI/CD Integration](#cicd-integration)
+- [Exit Codes](#exit-codes)
+- [License](#license)
 
 ## Installation
 
@@ -37,6 +70,10 @@ git clone https://github.com/leonardomso/gone.git
 cd gone
 go build
 ```
+
+### Download Binary
+
+Download the latest release from the [GitHub Releases](https://github.com/leonardomso/gone/releases) page.
 
 ## Quick Start
 
