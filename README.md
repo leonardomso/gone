@@ -31,10 +31,6 @@ Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, che
 
 - **CI/CD friendly.** Exit code 0 means all good. Exit code 1 means dead links. JUnit output works with GitHub Actions, GitLab CI, Jenkins, and everything else.
 
-<p align="center">
-  <!-- TODO: Add demo GIF here -->
-</p>
-
 ## Table of Contents
 
 - [Installation](#installation)
@@ -343,7 +339,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25.5'
 
       - name: Install gone
         run: go install github.com/leonardomso/gone@latest
