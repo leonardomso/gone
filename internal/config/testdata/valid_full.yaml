@@ -1,0 +1,11 @@
+ignore:
+  domains:
+    - example.com
+    - localhost
+    - internal.company.com
+  patterns:
+    - "*.local/*"
+    - "*/internal/*"
+  regex:
+    - ".*\\.test$"
+    - ".*/draft/.*"
