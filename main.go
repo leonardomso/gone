@@ -1,10 +1,11 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package main
 
-import "gone/cmd"
+import "github.com/leonardomso/gone/cmd"
+
+// version is set by GoReleaser at build time via ldflags.
+var version = "dev"
 
 func main() {
+	cmd.SetVersion(version)
 	cmd.Execute()
 }

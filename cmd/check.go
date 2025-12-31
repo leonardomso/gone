@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"gone/internal/checker"
-	"gone/internal/config"
-	"gone/internal/filter"
-	"gone/internal/output"
-	"gone/internal/parser"
-	"gone/internal/scanner"
+	"github.com/leonardomso/gone/internal/checker"
+	"github.com/leonardomso/gone/internal/config"
+	"github.com/leonardomso/gone/internal/filter"
+	"github.com/leonardomso/gone/internal/output"
+	"github.com/leonardomso/gone/internal/parser"
+	"github.com/leonardomso/gone/internal/scanner"
 
 	"github.com/spf13/cobra"
 )

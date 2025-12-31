@@ -1,4 +1,4 @@
-module gone
+module github.com/leonardomso/gone
 
 go 1.25.5
 

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"gone/internal/checker"
+	"github.com/leonardomso/gone/internal/checker"
 )
 
 // =============================================================================

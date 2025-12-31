@@ -1,6 +1,6 @@
 package ui
 
-import "gone/internal/checker"
+import "github.com/leonardomso/gone/internal/checker"
 
 // FilesFoundMsg is sent when markdown files have been discovered.
 type FilesFoundMsg struct {

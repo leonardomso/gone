@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"gone/internal/checker"
-	"gone/internal/parser"
+	"github.com/leonardomso/gone/internal/checker"
+	"github.com/leonardomso/gone/internal/parser"
 )
 
 // Fix represents a single URL replacement to be made.

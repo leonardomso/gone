@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"gone/internal/config"
-	"gone/internal/filter"
-	"gone/internal/ui"
+	"github.com/leonardomso/gone/internal/config"
+	"github.com/leonardomso/gone/internal/filter"
+	"github.com/leonardomso/gone/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"

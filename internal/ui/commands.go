@@ -3,9 +3,9 @@ package ui
 import (
 	"context"
 
-	"gone/internal/checker"
-	"gone/internal/parser"
-	"gone/internal/scanner"
+	"github.com/leonardomso/gone/internal/checker"
+	"github.com/leonardomso/gone/internal/parser"
+	"github.com/leonardomso/gone/internal/scanner"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

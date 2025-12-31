@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gone/internal/checker"
-	"gone/internal/parser"
+	"github.com/leonardomso/gone/internal/checker"
+	"github.com/leonardomso/gone/internal/parser"
 )
 
 // =============================================================================

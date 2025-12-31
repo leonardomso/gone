@@ -3,7 +3,7 @@ package output
 import (
 	"encoding/json"
 
-	"gone/internal/checker"
+	"github.com/leonardomso/gone/internal/checker"
 )
 
 // JSONFormatter formats reports as JSON.

@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 
-	"gone/internal/checker"
+	"github.com/leonardomso/gone/internal/checker"
 )
 
 // JUnitFormatter formats reports as JUnit XML for CI/CD integration.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"gone/internal/checker"
+	"github.com/leonardomso/gone/internal/checker"
 )
 
 // Format represents an output format type.

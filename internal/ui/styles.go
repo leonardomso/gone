@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"gone/internal/checker"
+	"github.com/leonardomso/gone/internal/checker"
 
 	"github.com/charmbracelet/lipgloss"
 )

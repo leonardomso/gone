@@ -3,8 +3,8 @@ package ui
 import (
 	"fmt"
 
-	"gone/internal/checker"
-	"gone/internal/filter"
+	"github.com/leonardomso/gone/internal/checker"
+	"github.com/leonardomso/gone/internal/filter"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"

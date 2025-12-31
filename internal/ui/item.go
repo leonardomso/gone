@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gone/internal/checker"
+	"github.com/leonardomso/gone/internal/checker"
 )
 
 // ResultItem wraps a checker.Result to implement list.Item interface.

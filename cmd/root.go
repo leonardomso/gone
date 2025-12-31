@@ -6,10 +6,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is set by main.go via SetVersion.
+var version = "dev"
+
+// SetVersion sets the version string (called from main).
+func SetVersion(v string) {
+	version = v
+	rootCmd.Version = v
+}
+
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
-	Use:   "gone",
-	Short: "A dead link detector for markdown files",
+	Use:     "gone",
+	Short:   "A dead link detector for markdown files",
+	Version: version,
 	Long: `Gone is a CLI tool that scans markdown files for dead links.
 
 It extracts all HTTP/HTTPS URLs from your markdown files and checks
