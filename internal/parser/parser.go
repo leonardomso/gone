@@ -4,6 +4,7 @@ package parser
 import (
 	"os"
 	"regexp"
+	"strings"
 )
 
 // Link represents a URL found in a file.
@@ -30,21 +31,21 @@ func ExtractLinks(filePath string) ([]Link, error) {
 		return nil, err
 	}
 
-	// Convert bytes to string for processing
-	text := string(content)
+	// Split into lines for line number tracking
+	// strings.Split divides the content at each newline character
+	lines := strings.Split(string(content), "\n")
 
-	// Find all matches - returns []string of all URLs found
-	matches := urlRegex.FindAllString(text, -1)
-
-	// Build our Link structs
-	// We're not tracking line numbers yet (would need more complex parsing)
-	links := make([]Link, 0, len(matches))
-	for _, url := range matches {
-		links = append(links, Link{
-			URL:      cleanURL(url),
-			FilePath: filePath,
-			Line:     0, // TODO: implement line tracking if needed
-		})
+	var links []Link
+	for lineNum, line := range lines {
+		// Find all URLs in this line
+		matches := urlRegex.FindAllString(line, -1)
+		for _, url := range matches {
+			links = append(links, Link{
+				URL:      cleanURL(url),
+				FilePath: filePath,
+				Line:     lineNum + 1, // 1-indexed (humans count from 1)
+			})
+		}
 	}
 
 	return links, nil

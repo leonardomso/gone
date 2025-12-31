@@ -353,7 +353,12 @@ func printResult(r checker.Result) {
 
 func printAliveResult(r checker.Result) {
 	fmt.Printf("  [%d] %s\n", r.StatusCode, r.Link.URL)
-	fmt.Printf("       File: %s\n\n", r.Link.FilePath)
+	fmt.Printf("       File: %s", r.Link.FilePath)
+	if r.Link.Line > 0 {
+		fmt.Printf(":%d", r.Link.Line)
+	}
+	fmt.Println()
+	fmt.Println()
 }
 
 func printWarningResult(r checker.Result) {
@@ -364,13 +369,21 @@ func printWarningResult(r checker.Result) {
 		fmt.Printf("       Final: %s\n", r.FinalURL)
 	}
 
-	fmt.Printf("       File: %s\n", r.Link.FilePath)
+	fmt.Printf("       File: %s", r.Link.FilePath)
+	if r.Link.Line > 0 {
+		fmt.Printf(":%d", r.Link.Line)
+	}
+	fmt.Println()
 	fmt.Printf("       Note: %s\n\n", r.Status.Description())
 }
 
 func printDeadResult(r checker.Result) {
 	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
-	fmt.Printf("       File: %s\n", r.Link.FilePath)
+	fmt.Printf("       File: %s", r.Link.FilePath)
+	if r.Link.Line > 0 {
+		fmt.Printf(":%d", r.Link.Line)
+	}
+	fmt.Println()
 
 	if r.Error != "" {
 		fmt.Printf("       Error: %s\n", r.Error)
@@ -382,14 +395,14 @@ func printDuplicateResult(r checker.Result) {
 	fmt.Printf("  [DUPLICATE] %s\n", r.Link.URL)
 	fmt.Printf("              File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
-		fmt.Printf(" (line %d)", r.Link.Line)
+		fmt.Printf(":%d", r.Link.Line)
 	}
 	fmt.Println()
 
 	if r.DuplicateOf != nil {
 		fmt.Printf("              Same as: %s", r.DuplicateOf.Link.FilePath)
 		if r.DuplicateOf.Link.Line > 0 {
-			fmt.Printf(" (line %d)", r.DuplicateOf.Link.Line)
+			fmt.Printf(":%d", r.DuplicateOf.Link.Line)
 		}
 		fmt.Printf(" → Status: %s\n", r.DuplicateOf.Status.Label())
 	}
