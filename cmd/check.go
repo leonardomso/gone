@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -10,62 +9,17 @@ import (
 	"gone/internal/checker"
 	"gone/internal/config"
 	"gone/internal/filter"
+	"gone/internal/output"
 	"gone/internal/parser"
 	"gone/internal/scanner"
 
 	"github.com/spf13/cobra"
 )
 
-// jsonOutput represents the JSON structure for output.
-type jsonOutput struct {
-	TotalFiles int           `json:"total_files"`
-	TotalLinks int           `json:"total_links"`
-	UniqueURLs int           `json:"unique_urls"`
-	Summary    jsonSummary   `json:"summary"`
-	Results    []jsonResult  `json:"results"`
-	Ignored    []jsonIgnored `json:"ignored,omitempty"`
-}
-
-type jsonSummary struct {
-	Alive      int `json:"alive"`
-	Redirects  int `json:"redirects"`
-	Blocked    int `json:"blocked"`
-	Dead       int `json:"dead"`
-	Errors     int `json:"errors"`
-	Duplicates int `json:"duplicates"`
-	Ignored    int `json:"ignored,omitempty"`
-}
-
-type jsonIgnored struct {
-	URL    string `json:"url"`
-	File   string `json:"file"`
-	Line   int    `json:"line,omitempty"`
-	Reason string `json:"reason"`
-	Rule   string `json:"rule"`
-}
-
-type jsonResult struct {
-	URL           string         `json:"url"`
-	FilePath      string         `json:"file_path"`
-	Line          int            `json:"line,omitempty"`
-	Text          string         `json:"text,omitempty"`
-	StatusCode    int            `json:"status_code"`
-	Status        string         `json:"status"`
-	Error         string         `json:"error,omitempty"`
-	RedirectChain []jsonRedirect `json:"redirect_chain,omitempty"`
-	FinalURL      string         `json:"final_url,omitempty"`
-	FinalStatus   int            `json:"final_status,omitempty"`
-	DuplicateOf   string         `json:"duplicate_of,omitempty"`
-}
-
-type jsonRedirect struct {
-	URL        string `json:"url"`
-	StatusCode int    `json:"status_code"`
-}
-
 // Flag variables.
 var (
-	format       string
+	outputFormat string
+	outputFile   string
 	concurrency  int
 	timeout      int
 	retries      int
@@ -100,13 +54,16 @@ Exit codes:
 Examples:
   gone check                         # Scan current directory
   gone check ./docs                  # Scan specific directory  
-  gone check --format=json           # Output as JSON
+  gone check --format=json           # Output JSON to stdout
+  gone check --format=yaml           # Output YAML to stdout
+  gone check --output=report.json    # Write JSON report to file
+  gone check --output=report.md      # Write Markdown report to file
+  gone check --output=report.junit.xml  # Write JUnit XML for CI/CD
   gone check --all                   # Show all results including alive
-  gone check --alive                 # Show only alive links
-  gone check --warnings              # Show only warnings (redirects, blocked)
   gone check --dead                  # Show only dead links and errors
   gone check --concurrency=20        # Use 20 concurrent workers
-  gone check --timeout=30            # 30 second timeout per request
+
+Note: --format and --output are mutually exclusive.
 
 Ignore patterns:
   gone check --ignore-domain=localhost,example.com
@@ -126,8 +83,11 @@ Config file (.gonerc.yaml):
 func init() {
 	rootCmd.AddCommand(checkCmd)
 
-	// Output format
-	checkCmd.Flags().StringVarP(&format, "format", "f", "text", "Output format: text or json")
+	// Output options
+	checkCmd.Flags().StringVarP(&outputFormat, "format", "f", "",
+		"Output format for stdout: json, yaml, xml, junit, markdown")
+	checkCmd.Flags().StringVarP(&outputFile, "output", "o", "",
+		"Write report to file (format inferred from extension: .json, .yaml, .xml, .junit.xml, .md)")
 
 	// Filter flags
 	checkCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all results (alive, warnings, dead)")
@@ -154,13 +114,28 @@ func init() {
 }
 
 func runCheck(_ *cobra.Command, args []string) {
+	// Validate mutually exclusive flags
+	if outputFormat != "" && outputFile != "" {
+		fmt.Fprintf(os.Stderr, "Error: --format and --output are mutually exclusive\n")
+		fmt.Fprintf(os.Stderr, "Use --format for stdout output, or --output for file output\n")
+		os.Exit(1)
+	}
+
+	// Validate format if specified
+	if outputFormat != "" && !output.IsValidFormat(outputFormat) {
+		fmt.Fprintf(os.Stderr, "Error: invalid format %q\n", outputFormat)
+		fmt.Fprintf(os.Stderr, "Valid formats: %s\n", strings.Join(output.ValidFormats(), ", "))
+		os.Exit(1)
+	}
+
 	// Determine the path to scan
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
 
-	isJSON := format == "json"
+	// Determine if we should suppress progress output
+	useStructuredOutput := outputFormat != ""
 
 	// Find all markdown files
 	files, err := scanner.FindMarkdownFiles(path)
@@ -169,7 +144,7 @@ func runCheck(_ *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if !isJSON {
+	if !useStructuredOutput {
 		fmt.Printf("Found %d markdown file(s)\n", len(files))
 	}
 
@@ -181,9 +156,12 @@ func runCheck(_ *cobra.Command, args []string) {
 	}
 
 	if len(parserLinks) == 0 {
-		if isJSON {
-			outputJSON(files, nil, checker.Summary{}, nil)
-		} else {
+		switch {
+		case useStructuredOutput:
+			handleStructuredOutput(files, nil, checker.Summary{}, nil)
+		case outputFile != "":
+			handleFileOutput(files, nil, checker.Summary{}, nil)
+		default:
 			fmt.Println("No links found.")
 		}
 		return
@@ -220,15 +198,18 @@ func runCheck(_ *cobra.Command, args []string) {
 	uniqueURLs := countUniqueURLs(links)
 	duplicates := len(links) - uniqueURLs
 
-	if !isJSON {
+	if !useStructuredOutput {
 		printProgressMessage(len(parserLinks), len(links), uniqueURLs, duplicates, ignoredCount)
 	}
 
 	// Handle case where all links were filtered out
 	if len(links) == 0 {
-		if isJSON {
-			outputJSON(files, nil, checker.Summary{}, urlFilter)
-		} else {
+		switch {
+		case useStructuredOutput:
+			handleStructuredOutput(files, nil, checker.Summary{}, urlFilter)
+		case outputFile != "":
+			handleFileOutput(files, nil, checker.Summary{}, urlFilter)
+		default:
 			fmt.Println("\nAll links were ignored by filter rules.")
 			if showIgnored && urlFilter != nil {
 				printIgnoredURLs(urlFilter)
@@ -249,10 +230,13 @@ func runCheck(_ *cobra.Command, args []string) {
 	results := c.CheckAll(links)
 	summary := checker.Summarize(results)
 
-	// Output based on format flag
-	if isJSON {
-		outputJSON(files, results, summary, urlFilter)
-	} else {
+	// Handle output
+	switch {
+	case useStructuredOutput:
+		handleStructuredOutput(files, results, summary, urlFilter)
+	case outputFile != "":
+		handleFileOutput(files, results, summary, urlFilter)
+	default:
 		outputText(results, summary, urlFilter)
 	}
 
@@ -260,6 +244,75 @@ func runCheck(_ *cobra.Command, args []string) {
 	if summary.HasDeadLinks() {
 		os.Exit(1)
 	}
+}
+
+// handleStructuredOutput outputs to stdout in the specified format.
+func handleStructuredOutput(
+	files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter,
+) {
+	report := buildReport(files, results, summary, urlFilter)
+
+	data, err := output.FormatReport(report, output.Format(outputFormat))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(string(data))
+}
+
+// handleFileOutput writes the report to a file.
+func handleFileOutput(files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
+	report := buildReport(files, results, summary, urlFilter)
+
+	if err := output.WriteToFile(report, outputFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Wrote report to %s\n", outputFile)
+
+	// Also print summary to stdout
+	fmt.Printf("\nSummary: %d alive | %d warnings | %d dead | %d duplicates",
+		summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
+	if urlFilter != nil && urlFilter.IgnoredCount() > 0 {
+		fmt.Printf(" | %d ignored", urlFilter.IgnoredCount())
+	}
+	fmt.Println()
+}
+
+// buildReport creates an output.Report from check results.
+func buildReport(
+	files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter,
+) *output.Report {
+	report := &output.Report{
+		GeneratedAt: time.Now(),
+		Files:       files,
+		TotalLinks:  summary.Total,
+		UniqueURLs:  summary.UniqueURLs,
+		Summary:     summary,
+		Results:     filterResults(results),
+	}
+
+	// Add ignored URLs if filter is present and --show-ignored is set
+	if showIgnored && urlFilter != nil {
+		for _, ig := range urlFilter.IgnoredURLs() {
+			report.Ignored = append(report.Ignored, output.IgnoredURL{
+				URL:    ig.URL,
+				File:   ig.File,
+				Line:   ig.Line,
+				Reason: ig.Type,
+				Rule:   ig.Rule,
+			})
+		}
+	}
+
+	// Adjust total links to include ignored
+	if urlFilter != nil {
+		report.TotalLinks += urlFilter.IgnoredCount()
+	}
+
+	return report
 }
 
 // createFilter builds a filter from config file and CLI flags.
@@ -321,85 +374,6 @@ func countUniqueURLs(links []checker.Link) int {
 		seen[l.URL] = true
 	}
 	return len(seen)
-}
-
-// outputJSON prints results as JSON.
-func outputJSON(files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
-	ignoredCount := 0
-	if urlFilter != nil {
-		ignoredCount = urlFilter.IgnoredCount()
-	}
-
-	output := jsonOutput{
-		TotalFiles: len(files),
-		TotalLinks: summary.Total + ignoredCount,
-		UniqueURLs: summary.UniqueURLs,
-		Summary: jsonSummary{
-			Alive:      summary.Alive,
-			Redirects:  summary.Redirects,
-			Blocked:    summary.Blocked,
-			Dead:       summary.Dead,
-			Errors:     summary.Errors,
-			Duplicates: summary.Duplicates,
-			Ignored:    ignoredCount,
-		},
-		Results: []jsonResult{},
-	}
-
-	// Filter results based on flags
-	filtered := filterResults(results)
-
-	for _, r := range filtered {
-		jr := jsonResult{
-			URL:        r.Link.URL,
-			FilePath:   r.Link.FilePath,
-			Line:       r.Link.Line,
-			Text:       r.Link.Text,
-			StatusCode: r.StatusCode,
-			Status:     r.Status.String(),
-			Error:      r.Error,
-		}
-
-		// Add redirect chain if present
-		if len(r.RedirectChain) > 0 {
-			jr.RedirectChain = make([]jsonRedirect, len(r.RedirectChain))
-			for i, red := range r.RedirectChain {
-				jr.RedirectChain[i] = jsonRedirect{
-					URL:        red.URL,
-					StatusCode: red.StatusCode,
-				}
-			}
-			jr.FinalURL = r.FinalURL
-			jr.FinalStatus = r.FinalStatus
-		}
-
-		// Add duplicate reference if present
-		if r.DuplicateOf != nil {
-			jr.DuplicateOf = r.DuplicateOf.Link.URL
-		}
-
-		output.Results = append(output.Results, jr)
-	}
-
-	// Add ignored URLs if --show-ignored is set
-	if showIgnored && urlFilter != nil {
-		for _, ig := range urlFilter.IgnoredURLs() {
-			output.Ignored = append(output.Ignored, jsonIgnored{
-				URL:    ig.URL,
-				File:   ig.File,
-				Line:   ig.Line,
-				Reason: ig.Type,
-				Rule:   ig.Rule,
-			})
-		}
-	}
-
-	jsonBytes, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println(string(jsonBytes))
 }
 
 // filterResults returns results based on the filter flags.
