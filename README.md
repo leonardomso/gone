@@ -10,7 +10,7 @@
 Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, checks if they're still alive, and helps you fix the ones that aren't.
 
 <p align="center">
-  <!-- TODO: Add logo here -->
+  <img src="./github-image.png" alt="gone" width="100%">
 </p>
 
 ## Here's a list of powerful features:
@@ -43,10 +43,14 @@ Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, che
   - [gone check](#gone-check)
   - [gone interactive](#gone-interactive)
   - [gone fix](#gone-fix)
+  - [gone completion](#gone-completion)
 - [Configuration](#configuration)
 - [Output Formats](#output-formats)
 - [CI/CD Integration](#cicd-integration)
 - [Exit Codes](#exit-codes)
+- [Reference](#reference)
+  - [Commands Overview](#commands-overview)
+  - [Flags Reference](#flags-reference)
 - [License](#license)
 
 ## Installation
@@ -106,21 +110,33 @@ gone check [path] [flags]
 
 **Flags:**
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--format` | `-f` | Output format: `json`, `yaml`, `xml`, `junit`, `markdown` |
-| `--output` | `-o` | Write report to file (format inferred from extension) |
-| `--all` | `-a` | Show all results including alive links |
-| `--dead` | `-d` | Show only dead links and errors |
-| `--warnings` | `-w` | Show only warnings (redirects, blocked) |
-| `--concurrency` | `-c` | Number of concurrent workers (default: 10) |
-| `--timeout` | `-t` | Timeout per request in seconds (default: 10) |
-| `--retries` | `-r` | Number of retries for failed requests (default: 2) |
-| `--ignore-domain` | | Domains to ignore (comma-separated or repeated) |
-| `--ignore-pattern` | | Glob patterns to ignore |
-| `--ignore-regex` | | Regex patterns to ignore |
-| `--show-ignored` | | Show which URLs were ignored |
-| `--no-config` | | Skip loading .gonerc.yaml |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--format` | `-f` | — | Output format: `json`, `yaml`, `xml`, `junit`, `markdown` |
+| `--output` | `-o` | — | Write report to file (format inferred from extension) |
+| `--all` | `-a` | `false` | Show all results including alive links |
+| `--dead` | `-d` | `false` | Show only dead links and errors |
+| `--warnings` | `-w` | `false` | Show only warnings (redirects, blocked) |
+| `--alive` | — | `false` | Show only alive links |
+| `--concurrency` | `-c` | `10` | Number of concurrent workers |
+| `--timeout` | `-t` | `10` | Timeout per request in seconds |
+| `--retries` | `-r` | `2` | Number of retries for failed requests |
+| `--ignore-domain` | — | — | Domains to ignore (comma-separated or repeated) |
+| `--ignore-pattern` | — | — | Glob patterns to ignore |
+| `--ignore-regex` | — | — | Regex patterns to ignore |
+| `--show-ignored` | — | `false` | Show which URLs were ignored |
+| `--no-config` | — | `false` | Skip loading .gonerc.yaml |
+
+**Link Status Types:**
+
+| Status | Description |
+|--------|-------------|
+| `Alive` | Link returned a 2xx response. All good. |
+| `Redirect` | Link redirected (301, 302, 307, 308) but final destination is alive. Consider updating to the final URL. |
+| `Blocked` | Server returned 403. Might be bot detection. Link may still work in a browser. |
+| `Dead` | Link is broken (4xx, 5xx, or redirect chain ends in error). |
+| `Error` | Network error: timeout, DNS failure, or connection refused. |
+| `Duplicate` | Same URL appears multiple times. Checked once, result shared. |
 
 **Examples:**
 
@@ -149,14 +165,28 @@ Launch an interactive terminal UI with real-time progress.
 gone interactive [path] [flags]
 ```
 
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ignore-domain` | — | Domains to ignore |
+| `--ignore-pattern` | — | Glob patterns to ignore |
+| `--ignore-regex` | — | Regex patterns to ignore |
+| `--no-config` | `false` | Skip loading .gonerc.yaml |
+
 **Controls:**
 
 | Key | Action |
 |-----|--------|
-| `↑/↓` or `j/k` | Navigate through results |
-| `f` | Cycle through filters (All → Warnings → Dead → Duplicates) |
+| `↑` / `k` | Move up |
+| `↓` / `j` | Move down |
+| `PgUp` / `Ctrl+U` | Page up |
+| `PgDn` / `Ctrl+D` | Page down |
+| `g` / `Home` | Go to start |
+| `G` / `End` | Go to end |
+| `f` | Cycle filter (All → Warnings → Dead → Duplicates) |
 | `?` | Toggle help |
-| `q` | Quit |
+| `q` / `Ctrl+C` | Quit |
 
 ### `gone fix`
 
@@ -168,10 +198,17 @@ gone fix [path] [flags]
 
 **Flags:**
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--yes` | `-y` | Apply all fixes without prompting |
-| `--dry-run` | `-n` | Preview changes without modifying files |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--yes` | `-y` | `false` | Apply all fixes without prompting |
+| `--dry-run` | `-n` | `false` | Preview changes without modifying files |
+| `--concurrency` | `-c` | `10` | Number of concurrent workers |
+| `--timeout` | `-t` | `10` | Timeout per request in seconds |
+| `--retries` | `-r` | `2` | Number of retries for failed requests |
+| `--ignore-domain` | — | — | Domains to ignore |
+| `--ignore-pattern` | — | — | Glob patterns to ignore |
+| `--ignore-regex` | — | — | Regex patterns to ignore |
+| `--no-config` | — | `false` | Skip loading .gonerc.yaml |
 
 **Examples:**
 
@@ -184,6 +221,36 @@ gone fix --dry-run
 
 # Apply all fixes automatically
 gone fix --yes
+```
+
+### `gone completion`
+
+Generate shell autocompletion scripts.
+
+```bash
+gone completion [shell]
+```
+
+**Supported Shells:**
+
+| Shell | Command |
+|-------|---------|
+| Bash | `gone completion bash` |
+| Zsh | `gone completion zsh` |
+| Fish | `gone completion fish` |
+| PowerShell | `gone completion powershell` |
+
+**Setup Examples:**
+
+```bash
+# Bash (add to ~/.bashrc)
+source <(gone completion bash)
+
+# Zsh (add to ~/.zshrc)
+source <(gone completion zsh)
+
+# Fish
+gone completion fish | source
 ```
 
 ## Configuration
@@ -299,6 +366,41 @@ jobs:
 | `0` | All links are alive (or only warnings) |
 | `1` | Dead links or errors found |
 | `2` | User quit interactive fix mode |
+
+## Reference
+
+### Commands Overview
+
+| Command | Description |
+|---------|-------------|
+| `gone check [path]` | Scan markdown files and report dead links |
+| `gone fix [path]` | Find redirects and update URLs to final destinations |
+| `gone interactive [path]` | Launch terminal UI for interactive exploration |
+| `gone completion [shell]` | Generate shell autocompletion (bash, zsh, fish, powershell) |
+| `gone help [command]` | Show help for any command |
+
+### Flags Reference
+
+| Flag | Commands | Default | Description |
+|------|----------|---------|-------------|
+| `-f, --format` | check | — | Output format (json, yaml, xml, junit, markdown) |
+| `-o, --output` | check | — | Write report to file |
+| `-a, --all` | check | `false` | Show all results including alive |
+| `-d, --dead` | check | `false` | Show only dead links |
+| `-w, --warnings` | check | `false` | Show only warnings |
+| `--alive` | check | `false` | Show only alive links |
+| `--show-ignored` | check | `false` | Show ignored URLs |
+| `-y, --yes` | fix | `false` | Apply fixes without prompting |
+| `-n, --dry-run` | fix | `false` | Preview changes only |
+| `-c, --concurrency` | check, fix | `10` | Concurrent workers |
+| `-t, --timeout` | check, fix | `10` | Request timeout (seconds) |
+| `-r, --retries` | check, fix | `2` | Retry attempts |
+| `--ignore-domain` | all | — | Domains to ignore |
+| `--ignore-pattern` | all | — | Glob patterns to ignore |
+| `--ignore-regex` | all | — | Regex patterns to ignore |
+| `--no-config` | all | `false` | Skip .gonerc.yaml |
+| `-h, --help` | all | — | Show help |
+| `-v, --version` | root | — | Show version |
 
 ## License
 
