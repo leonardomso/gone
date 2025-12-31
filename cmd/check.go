@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
-	"github.com/spf13/cobra"
 	"gone/internal/checker"
 	"gone/internal/parser"
 	"gone/internal/scanner"
+
+	"github.com/spf13/cobra"
 )
 
-// jsonOutput represents the JSON structure for output
+// jsonOutput represents the JSON structure for output.
 type jsonOutput struct {
 	TotalFiles int          `json:"total_files"`
 	TotalLinks int          `json:"total_links"`
@@ -27,12 +29,15 @@ type jsonResult struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// Flag variables - these store the values passed via command line
+// Flag variables.
 var (
-	format string // --format flag (text or json)
+	format      string
+	concurrency int
+	timeout     int
+	retries     int
 )
 
-// checkCmd represents the check command
+// checkCmd represents the check command.
 var checkCmd = &cobra.Command{
 	Use:   "check [path]",
 	Short: "Scan markdown files for dead links",
@@ -42,64 +47,105 @@ If no path is provided, scans the current directory.
 Returns a list of all dead links found (non-200 status codes).
 
 Examples:
-  gone check                    # Scan current directory
-  gone check ./docs             # Scan specific directory  
-  gone check --format=json      # Output as JSON
-  gone check ./docs -f json     # Both options combined`,
-	Args: cobra.MaximumNArgs(1), // Allow 0 or 1 argument (the path)
-	Run: func(cmd *cobra.Command, args []string) {
-		// Determine the path to scan
-		path := "."
-		if len(args) > 0 {
-			path = args[0]
-		}
-
-		// Find all markdown files
-		files, err := scanner.FindMarkdownFiles(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Only show progress for text output
-		isJSON := format == "json"
-		if !isJSON {
-			fmt.Printf("Found %d markdown file(s)\n", len(files))
-		}
-
-		// Extract all URLs from the files
-		links, err := parser.ExtractLinksFromMultipleFiles(files)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
-			os.Exit(1)
-		}
-
-		if len(links) == 0 {
-			if !isJSON {
-				fmt.Println("No links found.")
-			}
-			return
-		}
-
-		if !isJSON {
-			fmt.Printf("Found %d link(s), checking...\n", len(links))
-		}
-
-		// Check all links concurrently
-		results := checker.CheckLinks(links)
-		deadLinks := checker.FilterDeadLinks(results)
-
-		// Output based on format flag
-		if format == "json" {
-			outputJSON(files, links, deadLinks)
-		} else {
-			outputText(deadLinks)
-		}
-	},
+  gone check                         # Scan current directory
+  gone check ./docs                  # Scan specific directory  
+  gone check --format=json           # Output as JSON
+  gone check --concurrency=20        # Use 20 concurrent workers
+  gone check --timeout=30            # 30 second timeout per request
+  gone check --retries=3             # Retry failed requests 3 times`,
+	Args: cobra.MaximumNArgs(1),
+	Run:  runCheck,
 }
 
-// outputJSON prints results as JSON
-func outputJSON(files []string, links []parser.Link, deadLinks []checker.Result) {
+func init() {
+	rootCmd.AddCommand(checkCmd)
+
+	// Output format
+	checkCmd.Flags().StringVarP(&format, "format", "f", "text", "Output format: text or json")
+
+	// Performance options
+	checkCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 10, "Number of concurrent workers")
+	checkCmd.Flags().IntVarP(&timeout, "timeout", "t", 10, "Timeout per request in seconds")
+	checkCmd.Flags().IntVarP(&retries, "retries", "r", 2, "Number of retries for failed requests")
+}
+
+func runCheck(_ *cobra.Command, args []string) {
+	// Determine the path to scan
+	path := "."
+	if len(args) > 0 {
+		path = args[0]
+	}
+
+	isJSON := format == "json"
+
+	// Find all markdown files
+	files, err := scanner.FindMarkdownFiles(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !isJSON {
+		fmt.Printf("Found %d markdown file(s)\n", len(files))
+	}
+
+	// Extract all URLs from the files
+	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(parserLinks) == 0 {
+		if isJSON {
+			outputJSON(files, nil, nil)
+		} else {
+			fmt.Println("No links found.")
+		}
+		return
+	}
+
+	if !isJSON {
+		fmt.Printf("Found %d link(s), checking...\n", len(parserLinks))
+	}
+
+	// Convert parser.Link to checker.Link
+	links := make([]checker.Link, len(parserLinks))
+	for i, pl := range parserLinks {
+		links[i] = checker.Link{
+			URL:      pl.URL,
+			FilePath: pl.FilePath,
+			Line:     pl.Line,
+		}
+	}
+
+	// Create checker with configured options
+	opts := checker.DefaultOptions().
+		WithConcurrency(concurrency).
+		WithTimeout(time.Duration(timeout) * time.Second).
+		WithMaxRetries(retries)
+
+	c := checker.New(opts)
+
+	// Check all links
+	results := c.CheckAll(links)
+	deadLinks := checker.FilterDead(results)
+
+	// Output based on format flag
+	if isJSON {
+		outputJSON(files, links, deadLinks)
+	} else {
+		outputText(deadLinks)
+	}
+
+	// Exit with code 1 if dead links found (useful for CI)
+	if len(deadLinks) > 0 {
+		os.Exit(1)
+	}
+}
+
+// outputJSON prints results as JSON.
+func outputJSON(files []string, links []checker.Link, deadLinks []checker.Result) {
 	output := jsonOutput{
 		TotalFiles: len(files),
 		TotalLinks: len(links),
@@ -117,8 +163,6 @@ func outputJSON(files []string, links []parser.Link, deadLinks []checker.Result)
 		})
 	}
 
-	// json.MarshalIndent creates pretty-printed JSON
-	// The second arg is the prefix (empty), third is the indent string
 	jsonBytes, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
@@ -127,33 +171,20 @@ func outputJSON(files []string, links []parser.Link, deadLinks []checker.Result)
 	fmt.Println(string(jsonBytes))
 }
 
-// outputText prints results as human-readable text
+// outputText prints results as human-readable text.
 func outputText(deadLinks []checker.Result) {
 	if len(deadLinks) == 0 {
 		fmt.Println("\nAll links are alive!")
 	} else {
-		fmt.Printf("\nHEY, %d DEAD LINK(S) FOUND! THE LINKS ARE:\n\n", len(deadLinks))
+		fmt.Printf("\nFound %d dead link(s):\n\n", len(deadLinks))
 		for _, r := range deadLinks {
 			if r.Error != "" {
-				fmt.Printf("  [ERROR] %s\n          File: %s\n          Error: %s\n\n", r.Link.URL, r.Link.FilePath, r.Error)
+				fmt.Printf("  [ERROR] %s\n", r.Link.URL)
+				fmt.Printf("          File: %s\n", r.Link.FilePath)
+				fmt.Printf("          Error: %s\n\n", r.Error)
 			} else {
 				fmt.Printf("  [%d] %s\n       File: %s\n\n", r.StatusCode, r.Link.URL, r.Link.FilePath)
 			}
 		}
 	}
-}
-
-// init is a special Go function that runs automatically when the package loads
-func init() {
-	// Register checkCmd as a subcommand of rootCmd
-	rootCmd.AddCommand(checkCmd)
-
-	// Define flags for the check command
-	// StringVarP binds the flag to a variable:
-	// - &format: pointer to the variable to store the value
-	// - "format": long flag name (--format)
-	// - "f": short flag name (-f)
-	// - "text": default value
-	// - "...": help description
-	checkCmd.Flags().StringVarP(&format, "format", "f", "text", "Output format: text or json")
 }

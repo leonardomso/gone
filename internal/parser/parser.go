@@ -6,7 +6,7 @@ import (
 	"regexp"
 )
 
-// Link represents a URL found in a file
+// Link represents a URL found in a file.
 type Link struct {
 	URL      string // The actual URL
 	FilePath string // Which file it was found in
@@ -18,10 +18,10 @@ type Link struct {
 //   - https?://           - matches "http://" or "https://"
 //   - [^\s\)\]\>\"\'<]+   - matches any characters except whitespace and common URL terminators
 //
-// We compile this once at package load time (more efficient than compiling per-call)
-var urlRegex = regexp.MustCompile(`https?://[^\s\)\]\>\"\'<]+`)
+// We compile this once at package load time (more efficient than compiling per-call).
+var urlRegex = regexp.MustCompile(`https?://[^\s\)\]>\"\'<]+`)
 
-// ExtractLinks reads a file and returns all HTTP/HTTPS links found
+// ExtractLinks reads a file and returns all HTTP/HTTPS links found.
 func ExtractLinks(filePath string) ([]Link, error) {
 	// Read the entire file into memory
 	// os.ReadFile returns []byte (a byte slice)
@@ -38,7 +38,7 @@ func ExtractLinks(filePath string) ([]Link, error) {
 
 	// Build our Link structs
 	// We're not tracking line numbers yet (would need more complex parsing)
-	var links []Link
+	links := make([]Link, 0, len(matches))
 	for _, url := range matches {
 		links = append(links, Link{
 			URL:      cleanURL(url),
@@ -50,7 +50,7 @@ func ExtractLinks(filePath string) ([]Link, error) {
 	return links, nil
 }
 
-// ExtractLinksFromMultipleFiles processes multiple files and returns all links
+// ExtractLinksFromMultipleFiles processes multiple files and returns all links.
 func ExtractLinksFromMultipleFiles(filePaths []string) ([]Link, error) {
 	var allLinks []Link
 
@@ -71,7 +71,7 @@ func ExtractLinksFromMultipleFiles(filePaths []string) ([]Link, error) {
 // For example: "https://example.com." should become "https://example.com"
 func cleanURL(url string) string {
 	// Remove common trailing characters that aren't part of URLs
-	for len(url) > 0 {
+	for url != "" {
 		last := url[len(url)-1]
 		// Check if last character is punctuation we want to strip
 		if last == '.' || last == ',' || last == ';' || last == ':' {

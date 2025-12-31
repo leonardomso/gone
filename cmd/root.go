@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// rootCmd represents the base command when called without any subcommands
+// rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
 	Use:   "gone",
 	Short: "A dead link detector for markdown files",
@@ -28,6 +28,6 @@ Examples:
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		os.Exit(1)
+		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
 	}
 }

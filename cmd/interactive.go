@@ -1,19 +1,21 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+
+	"gone/internal/checker"
+	"gone/internal/parser"
+	"gone/internal/scanner"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	"gone/internal/checker"
-	"gone/internal/parser"
-	"gone/internal/scanner"
 )
 
-// interactiveCmd represents the interactive command
+// interactiveCmd represents the interactive command.
 var interactiveCmd = &cobra.Command{
 	Use:   "interactive",
 	Short: "Launch interactive TUI for dead link detection",
@@ -25,12 +27,11 @@ select which dead links to review.
 Controls:
   ↑/↓ or j/k    Navigate through results
   q             Quit`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Create and run the Bubble Tea program
+	Run: func(_ *cobra.Command, _ []string) {
 		p := tea.NewProgram(initialModel())
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Error running interactive mode: %v\n", err)
-			os.Exit(1)
+			os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
 		}
 	},
 }
@@ -40,18 +41,15 @@ func init() {
 }
 
 // =============================================================================
-// STYLES - Define all our styles in one place (like CSS)
+// STYLES
 // =============================================================================
 
 var (
-	// Colors
 	primaryColor   = lipgloss.Color("205") // Pink
 	secondaryColor = lipgloss.Color("241") // Gray
 	successColor   = lipgloss.Color("82")  // Green
 	errorColor     = lipgloss.Color("196") // Red
-	warningColor   = lipgloss.Color("214") // Orange
 
-	// Styles
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(primaryColor).
@@ -79,7 +77,7 @@ var (
 )
 
 // =============================================================================
-// STATE MACHINE - Different phases of our app
+// STATE MACHINE
 // =============================================================================
 
 type appState int
@@ -92,49 +90,45 @@ const (
 )
 
 // =============================================================================
-// MESSAGES - Events that can happen in our app
+// MESSAGES
 // =============================================================================
 
-// filesFoundMsg is sent when we finish scanning for files
 type filesFoundMsg struct {
 	files []string
 	err   error
 }
 
-// linksExtractedMsg is sent when we finish extracting links
 type linksExtractedMsg struct {
-	links []parser.Link
+	links []checker.Link
 	err   error
 }
 
-// linkCheckedMsg is sent each time a link check completes
 type linkCheckedMsg struct {
 	result checker.Result
 }
 
-// allChecksCompleteMsg is sent when all checks are done
 type allChecksCompleteMsg struct{}
 
 // =============================================================================
-// MODEL - Our application state
+// MODEL
 // =============================================================================
 
 type model struct {
-	state     appState         // Current phase
-	spinner   spinner.Model    // Loading spinner
-	files     []string         // Markdown files found
-	links     []parser.Link    // Links extracted
-	results   []checker.Result // Check results (accumulates)
-	deadLinks []checker.Result // Only the dead ones
-	checked   int              // How many links checked so far
-	cursor    int              // Currently selected result
-	quitting  bool
-	err       error
+	state       appState
+	spinner     spinner.Model
+	files       []string
+	links       []checker.Link
+	results     []checker.Result
+	deadLinks   []checker.Result
+	checked     int
+	cursor      int
+	quitting    bool
+	err         error
+	cancelFunc  context.CancelFunc    // For canceling ongoing checks
+	resultsChan <-chan checker.Result // Channel for streaming results
 }
 
-// initialModel creates the starting state
 func initialModel() model {
-	// Create a spinner with a nice style
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(primaryColor)
@@ -146,31 +140,50 @@ func initialModel() model {
 }
 
 // =============================================================================
-// COMMANDS - Functions that perform side effects and return messages
+// COMMANDS
 // =============================================================================
 
-// scanFiles is a command that scans for markdown files
-func scanFiles() tea.Msg {
+func scanFilesCmd() tea.Msg {
 	files, err := scanner.FindMarkdownFiles(".")
 	return filesFoundMsg{files: files, err: err}
 }
 
-// extractLinks is a command that extracts links from files
-func extractLinks(files []string) tea.Cmd {
+func extractLinksCmd(files []string) tea.Cmd {
 	return func() tea.Msg {
-		links, err := parser.ExtractLinksFromMultipleFiles(files)
-		return linksExtractedMsg{links: links, err: err}
+		parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
+		if err != nil {
+			return linksExtractedMsg{err: err}
+		}
+
+		// Convert parser.Link to checker.Link
+		links := make([]checker.Link, len(parserLinks))
+		for i, pl := range parserLinks {
+			links[i] = checker.Link{
+				URL:      pl.URL,
+				FilePath: pl.FilePath,
+				Line:     pl.Line,
+			}
+		}
+		return linksExtractedMsg{links: links}
 	}
 }
 
-// checkLinksCmd starts the async link checking
-func checkLinksCmd(links []parser.Link) tea.Cmd {
+// startCheckingCmd initializes the checker and returns the first result.
+func (m *model) startCheckingCmd(links []checker.Link) tea.Cmd {
 	return func() tea.Msg {
-		// Get the channel of results
-		resultsChan := checker.CheckLinksAsync(links)
+		// Create a cancellable context
+		ctx, cancel := context.WithCancel(context.Background())
+		m.cancelFunc = cancel
 
-		// Return the first result (subsequent results will be fetched by waitForResult)
-		result, ok := <-resultsChan
+		// Create checker with default options
+		opts := checker.DefaultOptions()
+		c := checker.New(opts)
+
+		// Start checking and store the channel
+		m.resultsChan = c.Check(ctx, links)
+
+		// Get the first result
+		result, ok := <-m.resultsChan
 		if !ok {
 			return allChecksCompleteMsg{}
 		}
@@ -178,51 +191,42 @@ func checkLinksCmd(links []parser.Link) tea.Cmd {
 	}
 }
 
-// waitForResult creates a command that waits for the next result
-// We store the channel in a package-level variable (not ideal but simple)
-var resultsChan <-chan checker.Result
-
-func startCheckingLinks(links []parser.Link) tea.Cmd {
+// waitForNextResultCmd waits for the next result from the channel.
+func (m *model) waitForNextResultCmd() tea.Cmd {
 	return func() tea.Msg {
-		resultsChan = checker.CheckLinksAsync(links)
-		return waitForNextResult()
-	}
-}
+		if m.resultsChan == nil {
+			return allChecksCompleteMsg{}
+		}
 
-func waitForNextResult() tea.Msg {
-	result, ok := <-resultsChan
-	if !ok {
-		return allChecksCompleteMsg{}
-	}
-	return linkCheckedMsg{result: result}
-}
-
-func waitForResultCmd() tea.Cmd {
-	return func() tea.Msg {
-		return waitForNextResult()
+		result, ok := <-m.resultsChan
+		if !ok {
+			return allChecksCompleteMsg{}
+		}
+		return linkCheckedMsg{result: result}
 	}
 }
 
 // =============================================================================
-// INIT - Called once at startup
+// INIT
 // =============================================================================
 
 func (m model) Init() tea.Cmd {
-	// Start the spinner AND scan for files
-	return tea.Batch(m.spinner.Tick, scanFiles)
+	return tea.Batch(m.spinner.Tick, scanFilesCmd)
 }
 
 // =============================================================================
-// UPDATE - Handle all events
+// UPDATE
 // =============================================================================
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
-	// Key presses
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			// Cancel ongoing checks if any
+			if m.cancelFunc != nil {
+				m.cancelFunc()
+			}
 			m.quitting = true
 			return m, tea.Quit
 		case "up", "k":
@@ -235,13 +239,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	// Spinner tick
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	// Files found
 	case filesFoundMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -250,9 +252,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.files = msg.files
 		m.state = stateExtracting
-		return m, extractLinks(msg.files)
+		return m, extractLinksCmd(msg.files)
 
-	// Links extracted
 	case linksExtractedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -265,21 +266,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.state = stateChecking
-		return m, startCheckingLinks(m.links)
+		cmd := m.startCheckingCmd(m.links)
+		return m, cmd
 
-	// Single link checked
 	case linkCheckedMsg:
 		m.results = append(m.results, msg.result)
 		m.checked++
 		if !msg.result.IsAlive {
 			m.deadLinks = append(m.deadLinks, msg.result)
 		}
-		// Wait for next result
-		return m, waitForResultCmd()
+		cmd := m.waitForNextResultCmd()
+		return m, cmd
 
-	// All checks complete
 	case allChecksCompleteMsg:
 		m.state = stateDone
+		m.resultsChan = nil
 		return m, nil
 	}
 
@@ -287,7 +288,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // =============================================================================
-// VIEW - Render the UI
+// VIEW
 // =============================================================================
 
 func (m model) View() string {
@@ -297,11 +298,9 @@ func (m model) View() string {
 
 	var s string
 
-	// Title
 	s += titleStyle.Render("Gone - Dead Link Detector")
 	s += "\n\n"
 
-	// Show error if any
 	if m.err != nil {
 		s += errorStyle.Render(fmt.Sprintf("Error: %v", m.err))
 		s += "\n"
@@ -309,7 +308,6 @@ func (m model) View() string {
 		return s
 	}
 
-	// State-specific content
 	switch m.state {
 	case stateScanning:
 		s += m.spinner.View() + " Scanning for markdown files..."
@@ -328,7 +326,6 @@ func (m model) View() string {
 		s += m.renderResults()
 	}
 
-	// Help text
 	s += helpStyle.Render("\nPress q to quit")
 	if m.state == stateDone && len(m.deadLinks) > 0 {
 		s += helpStyle.Render(" | ↑/↓ to navigate")
@@ -337,7 +334,6 @@ func (m model) View() string {
 	return s
 }
 
-// renderResults shows the final results
 func (m model) renderResults() string {
 	var s string
 
@@ -350,7 +346,6 @@ func (m model) renderResults() string {
 
 	s += errorStyle.Render(fmt.Sprintf("Found %d dead link(s):\n\n", len(m.deadLinks)))
 
-	// Show dead links with cursor
 	for i, r := range m.deadLinks {
 		cursor := "  "
 		style := normalStyle
@@ -359,7 +354,6 @@ func (m model) renderResults() string {
 			style = selectedStyle
 		}
 
-		// Format the status
 		status := fmt.Sprintf("[%d]", r.StatusCode)
 		if r.Error != "" {
 			status = "[ERR]"
@@ -368,7 +362,6 @@ func (m model) renderResults() string {
 		line := fmt.Sprintf("%s%s %s", cursor, status, r.Link.URL)
 		s += style.Render(line) + "\n"
 
-		// Show file path for selected item
 		if i == m.cursor {
 			s += statusStyle.Render(fmt.Sprintf("      File: %s", r.Link.FilePath)) + "\n"
 			if r.Error != "" {

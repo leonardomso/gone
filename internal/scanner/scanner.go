@@ -8,7 +8,7 @@ import (
 )
 
 // FindMarkdownFiles walks a directory and returns all .md file paths
-// It skips hidden directories (starting with .) like .git
+// It skips hidden directories (starting with .) like .git.
 func FindMarkdownFiles(root string) ([]string, error) {
 	var files []string
 
