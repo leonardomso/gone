@@ -119,10 +119,8 @@ func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
 		var wg sync.WaitGroup
 		jobs := make(chan Link, len(uniqueLinks))
 
-		for i := 0; i < c.opts.Concurrency; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range c.opts.Concurrency {
+			wg.Go(func() {
 				for link := range jobs {
 					select {
 					case <-ctx.Done():
@@ -136,7 +134,7 @@ func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
 						primaryChan <- result
 					}
 				}
-			}()
+			})
 		}
 
 		// Send jobs to workers
@@ -226,15 +224,11 @@ func (c *Checker) checkWithRetry(ctx context.Context, link Link) Result {
 // backoffDelay calculates delay for retry with exponential backoff and jitter.
 func backoffDelay(attempt int) time.Duration {
 	// Base delay: 1s, 2s, 4s, etc.
-	if attempt < 1 {
-		attempt = 1
-	}
+	attempt = max(attempt, 1)
 	base := time.Second * time.Duration(1<<uint(attempt-1)) //nolint:gosec // attempt is bounded
 
 	// Cap at 30 seconds
-	if base > 30*time.Second {
-		base = 30 * time.Second
-	}
+	base = min(base, 30*time.Second)
 
 	// Add jitter (0-25% of base) using crypto/rand for security
 	maxJitter := int64(base / 4)

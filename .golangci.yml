@@ -8,10 +8,13 @@ linters:
   enable:
     # Code quality
     - dupword               # Finds duplicate words
+    - errcheck              # Checks for unchecked errors
+    - errorlint             # Find code that can cause problems with error wrapping
     - gocritic              # Highly extensible Go linter
     - govet                 # Reports suspicious constructs
     - ineffassign           # Detects ineffectual assignments
     - misspell              # Finds commonly misspelled English words
+    - modernize             # Suggests modern Go idioms (Go 1.21+)
     - revive                # Drop-in replacement for golint
     - staticcheck           # Go static analysis
     - unconvert             # Removes unnecessary type conversions

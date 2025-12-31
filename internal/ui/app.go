@@ -168,10 +168,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		// Reserve space for header, summary, and detail panel
-		listHeight := msg.Height - 12
-		if listHeight < 5 {
-			listHeight = 5
-		}
+		listHeight := max(msg.Height-12, 5)
 		m.list.SetSize(msg.Width, listHeight)
 		return m, nil
 
