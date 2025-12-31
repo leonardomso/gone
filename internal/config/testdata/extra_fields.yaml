@@ -1,0 +1,6 @@
+ignore:
+  domains:
+    - example.com
+  unknown_field: some_value
+other_section:
+  foo: bar

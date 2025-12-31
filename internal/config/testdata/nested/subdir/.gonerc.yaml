@@ -1,0 +1,3 @@
+ignore:
+  domains:
+    - nested.example.com

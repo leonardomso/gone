@@ -1,0 +1,147 @@
+# This is the configuration for golangci-lint.
+# See https://golangci-lint.run/usage/configuration/ for details.
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    # Code quality
+    - dupword               # Finds duplicate words
+    - errcheck              # Checks for unchecked errors
+    - errorlint             # Find code that can cause problems with error wrapping
+    - gocritic              # Highly extensible Go linter
+    - govet                 # Reports suspicious constructs
+    - ineffassign           # Detects ineffectual assignments
+    - misspell              # Finds commonly misspelled English words
+    - modernize             # Suggests modern Go idioms (Go 1.21+)
+    - revive                # Drop-in replacement for golint
+    - staticcheck           # Go static analysis
+    - unconvert             # Removes unnecessary type conversions
+    - unparam               # Reports unused function parameters
+    - unused                # Checks for unused code
+    - wastedassign          # Finds wasted assignment statements
+    
+    # Security
+    - gosec                 # Security checks
+    
+    # Style
+    - godot                 # Check if comments end in a period
+    - nolintlint            # Reports ill-formed nolint directives
+    
+    # Performance
+    - prealloc              # Finds slice declarations that could be preallocated
+
+  exclusions:
+    warn-unused: true
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - gocritic
+          - gosec
+          - unparam
+      # CLI entry points commonly use os.Exit
+      - path: 'cmd/.*\.go'
+        text: 'deep-exit'
+        linters:
+          - revive
+
+  settings:
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - hugeParam         # Can be noisy for struct receivers
+        - rangeValCopy      # Can be noisy
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment    # Too strict for most projects
+        - shadow            # Can be noisy
+
+    misspell:
+      locale: US
+
+    nolintlint:
+      allow-unused: true
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      severity: warning
+      confidence: 0.8
+      rules:
+        # Style
+        - name: bare-return
+        - name: blank-imports
+        - name: comment-spacings
+        - name: constant-logical-expr
+        - name: dot-imports
+        - name: empty-block
+        - name: empty-lines
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: superfluous-else
+        - name: unnecessary-stmt
+        - name: unreachable-code
+        - name: useless-break
+        - name: use-any
+        
+        # Naming
+        - name: exported
+        - name: package-comments
+          disabled: true      # Enable when ready to add package docs
+        - name: receiver-naming
+        - name: unexported-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: var-naming
+        
+        # Error handling
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        
+        # Context
+        - name: context-as-argument
+        - name: context-keys-type
+        
+        # Time
+        - name: time-equal
+        - name: time-naming
+        
+        # Safety
+        - name: datarace
+        - name: deep-exit
+        - name: identical-branches
+        - name: redefines-builtin-id
+        
+        # Code style enforcement
+        - name: enforce-map-style
+          arguments: ["literal"]
+        - name: enforce-slice-style
+          arguments: ["literal"]
+        - name: line-length-limit
+          arguments: [120]
+        
+        # Parameters
+        - name: unused-parameter
+        - name: unused-receiver
+
+    gosec:
+      excludes:
+        - G104  # Audit errors not checked (we use errcheck)
+        - G304  # File path provided as taint input (acceptable for CLI)
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  # Show all issues from a linter
+  max-issues-per-linter: 0
+  # Show all issues with the same text
+  max-same-issues: 0
