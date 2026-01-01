@@ -11,6 +11,7 @@ import (
 	"github.com/leonardomso/gone/internal/fixer"
 	"github.com/leonardomso/gone/internal/parser"
 	"github.com/leonardomso/gone/internal/scanner"
+	"github.com/leonardomso/gone/internal/stats"
 
 	"github.com/spf13/cobra"
 )
@@ -22,6 +23,7 @@ var (
 	fixConcurrency int
 	fixTimeout     int
 	fixRetries     int
+	fixShowStats   bool
 
 	// Ignore flags (shared with check).
 	fixIgnoreDomains  []string
@@ -49,6 +51,7 @@ Examples:
   gone fix --dry-run            # Preview what would be fixed
   gone fix --yes                # Apply all fixes without prompting
   gone fix --yes --dry-run      # Preview all fixes (no prompts, no changes)
+  gone fix --stats              # Show performance statistics
 
 Ignore patterns (same as check command):
   gone fix --ignore-domain=localhost
@@ -68,12 +71,16 @@ func init() {
 		"Preview changes without modifying files")
 
 	// Performance options
-	fixCmd.Flags().IntVarP(&fixConcurrency, "concurrency", "c", 10,
+	fixCmd.Flags().IntVarP(&fixConcurrency, "concurrency", "c", checker.DefaultConcurrency,
 		"Number of concurrent workers")
-	fixCmd.Flags().IntVarP(&fixTimeout, "timeout", "t", 10,
+	fixCmd.Flags().IntVarP(&fixTimeout, "timeout", "t", int(checker.DefaultTimeout.Seconds()),
 		"Timeout per request in seconds")
-	fixCmd.Flags().IntVarP(&fixRetries, "retries", "r", 2,
+	fixCmd.Flags().IntVarP(&fixRetries, "retries", "r", checker.DefaultMaxRetries,
 		"Number of retries for failed requests")
+
+	// Stats flag
+	fixCmd.Flags().BoolVar(&fixShowStats, "stats", false,
+		"Show detailed performance statistics")
 
 	// Ignore options
 	fixCmd.Flags().StringSliceVar(&fixIgnoreDomains, "ignore-domain", nil,
@@ -89,22 +96,28 @@ func init() {
 // runFix is the main entry point for the fix command.
 // It scans for redirects and applies fixes interactively or automatically.
 func runFix(_ *cobra.Command, args []string) {
+	// Initialize stats tracking
+	perf := stats.New()
+
 	// Determine the path to scan
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
 
-	// Find all markdown files
+	// Phase 1: Scan for files
+	perf.StartScan()
 	files, err := scanner.FindMarkdownFiles(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
 	}
+	perf.EndScan(len(files))
 
 	fmt.Printf("Found %d markdown file(s)\n", len(files))
 
-	// Extract all URLs from the files
+	// Phase 2: Parse links
+	perf.StartParse()
 	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
@@ -112,7 +125,11 @@ func runFix(_ *cobra.Command, args []string) {
 	}
 
 	if len(parserLinks) == 0 {
+		perf.EndParse(0, 0, 0, 0)
 		fmt.Println("No links found.")
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
@@ -131,14 +148,29 @@ func runFix(_ *cobra.Command, args []string) {
 	// Convert parser.Link to checker.Link, applying filter
 	links := FilterParserLinks(parserLinks, urlFilter)
 
-	if len(links) == 0 {
-		fmt.Println("All links were ignored by filter rules.")
-		return
+	ignoredCount := 0
+	if urlFilter != nil {
+		ignoredCount = urlFilter.IgnoredCount()
 	}
 
 	// Count unique URLs using shared helper
 	uniqueURLs := CountUniqueURLs(links)
+	duplicates := len(links) - uniqueURLs
+
+	perf.EndParse(len(parserLinks), uniqueURLs, duplicates, ignoredCount)
+
+	if len(links) == 0 {
+		fmt.Println("All links were ignored by filter rules.")
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
+		return
+	}
+
 	fmt.Printf("Checking %d unique URL(s) for redirects...\n", uniqueURLs)
+
+	// Phase 3: Check URLs
+	perf.StartCheck()
 
 	// Create checker and check all links
 	opts := checker.DefaultOptions().
@@ -149,6 +181,8 @@ func runFix(_ *cobra.Command, args []string) {
 	c := checker.New(opts)
 	results := c.CheckAll(links)
 
+	perf.EndCheck()
+
 	// Create fixer and find fixable items
 	f := fixer.New()
 	f.SetParserLinks(parserLinks)
@@ -157,6 +191,9 @@ func runFix(_ *cobra.Command, args []string) {
 	if len(changes) == 0 {
 		fmt.Println("\nNo fixable redirects found.")
 		printFixSummary(results)
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
@@ -167,17 +204,26 @@ func runFix(_ *cobra.Command, args []string) {
 	// Handle dry-run mode
 	if fixDryRun {
 		fmt.Println("Dry-run mode: no files were modified.")
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
 	// Handle automatic mode
 	if fixYes {
 		applyAllFixes(f, changes)
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
 	// Interactive mode
 	runInteractiveFix(f, changes)
+	if fixShowStats {
+		fmt.Print(perf.String())
+	}
 }
 
 // applyAllFixes applies all fixes without prompting.

@@ -38,11 +38,11 @@ func New(opts Options) *Checker {
 // so that redirect chains can be tracked and analyzed.
 func newHTTPClient(opts Options) *http.Client {
 	transport := &http.Transport{
-		// Connection pooling - reuse connections for efficiency
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		MaxConnsPerHost:     20,
-		IdleConnTimeout:     90 * time.Second,
+		// Connection pooling - optimized for high concurrency
+		MaxIdleConns:        500,              // Support many concurrent connections
+		MaxIdleConnsPerHost: 50,               // More per-host parallelism
+		MaxConnsPerHost:     100,              // Support high concurrency per domain
+		IdleConnTimeout:     30 * time.Second, // Faster cleanup of idle connections
 
 		// TLS configuration with minimum version for security
 		TLSClientConfig: &tls.Config{
@@ -50,17 +50,18 @@ func newHTTPClient(opts Options) *http.Client {
 			MinVersion:         tls.VersionTLS12,
 		},
 
-		// Timeout layers for different phases
+		// Timeout layers for different phases - tuned for speed
 		DialContext: (&net.Dialer{
 			Timeout:   opts.Timeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second, // Faster TLS handshake timeout
 		ResponseHeaderTimeout: opts.Timeout,
 		ExpectContinueTimeout: 1 * time.Second,
 
-		// Enable compression
+		// Enable compression and HTTP/2
 		DisableCompression: false,
+		ForceAttemptHTTP2:  true, // Enable HTTP/2 for connection multiplexing
 	}
 
 	return &http.Client{
@@ -74,8 +75,9 @@ func newHTTPClient(opts Options) *http.Client {
 }
 
 // CheckAll checks all links and returns results after all are complete.
-// This is a blocking operation.
+// This is a blocking operation. Results slice is pre-allocated for efficiency.
 func (c *Checker) CheckAll(links []Link) []Result {
+	// Pre-allocate with exact capacity to avoid reallocations
 	results := make([]Result, 0, len(links))
 	for result := range c.Check(context.Background(), links) {
 		results = append(results, result)

@@ -66,6 +66,10 @@ type Report struct {
 	Summary     checker.Summary
 	TotalLinks  int
 	UniqueURLs  int
+
+	// Stats contains performance statistics when --stats flag is used.
+	// This is a map to allow flexible serialization to JSON/YAML.
+	Stats map[string]any `json:"stats,omitempty" yaml:"stats,omitempty"`
 }
 
 // Formatter is the interface that output formatters implement.

@@ -2,50 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/leonardomso/gone/internal/checker"
 	"github.com/leonardomso/gone/internal/filter"
 	"github.com/leonardomso/gone/internal/output"
 )
-
-// handleStructuredOutput outputs the check results to stdout in the specified format.
-// Supported formats include JSON, YAML, XML, JUnit, and Markdown.
-func handleStructuredOutput(
-	files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter,
-) {
-	report := buildReport(files, results, summary, urlFilter)
-
-	data, err := output.FormatReport(report, output.Format(outputFormat))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Print(string(data))
-}
-
-// handleFileOutput writes the check results to a file.
-// The output format is inferred from the file extension.
-func handleFileOutput(files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
-	report := buildReport(files, results, summary, urlFilter)
-
-	if err := output.WriteToFile(report, outputFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Wrote report to %s\n", outputFile)
-
-	// Also print summary to stdout
-	fmt.Printf("\nSummary: %d alive | %d warnings | %d dead | %d duplicates",
-		summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
-	if urlFilter != nil && urlFilter.IgnoredCount() > 0 {
-		fmt.Printf(" | %d ignored", urlFilter.IgnoredCount())
-	}
-	fmt.Println()
-}
 
 // buildReport creates an output.Report from check results.
 // This consolidates all data needed for formatted output.
@@ -100,7 +62,8 @@ func filterResults(results []checker.Result) []checker.Result {
 	}
 
 	// Default: show warnings + dead + duplicates (non-alive)
-	var filtered []checker.Result
+	// Pre-allocate with estimated capacity
+	filtered := make([]checker.Result, 0, len(results)/4)
 	for _, r := range results {
 		if !r.IsAlive() {
 			filtered = append(filtered, r)

@@ -11,6 +11,7 @@ import (
 	"github.com/leonardomso/gone/internal/output"
 	"github.com/leonardomso/gone/internal/parser"
 	"github.com/leonardomso/gone/internal/scanner"
+	"github.com/leonardomso/gone/internal/stats"
 
 	"github.com/spf13/cobra"
 )
@@ -26,6 +27,7 @@ var (
 	showWarnings bool
 	showDead     bool
 	showAll      bool
+	showStats    bool
 
 	// Ignore flags.
 	ignoreDomains  []string
@@ -60,7 +62,8 @@ Examples:
   gone check --output=report.junit.xml  # Write JUnit XML for CI/CD
   gone check --all                   # Show all results including alive
   gone check --dead                  # Show only dead links and errors
-  gone check --concurrency=20        # Use 20 concurrent workers
+  gone check --concurrency=100       # Use 100 concurrent workers
+  gone check --stats                 # Show performance statistics
 
 Note: --format and --output are mutually exclusive.
 
@@ -95,9 +98,16 @@ func init() {
 	checkCmd.Flags().BoolVarP(&showDead, "dead", "d", false, "Show only dead links and errors")
 
 	// Performance options
-	checkCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 10, "Number of concurrent workers")
-	checkCmd.Flags().IntVarP(&timeout, "timeout", "t", 10, "Timeout per request in seconds")
-	checkCmd.Flags().IntVarP(&retries, "retries", "r", 2, "Number of retries for failed requests")
+	checkCmd.Flags().IntVarP(&concurrency, "concurrency", "c", checker.DefaultConcurrency,
+		"Number of concurrent workers")
+	checkCmd.Flags().IntVarP(&timeout, "timeout", "t", int(checker.DefaultTimeout.Seconds()),
+		"Timeout per request in seconds")
+	checkCmd.Flags().IntVarP(&retries, "retries", "r", checker.DefaultMaxRetries,
+		"Number of retries for failed requests")
+
+	// Stats flag
+	checkCmd.Flags().BoolVar(&showStats, "stats", false,
+		"Show detailed performance statistics")
 
 	// Ignore options
 	checkCmd.Flags().StringSliceVar(&ignoreDomains, "ignore-domain", nil,
@@ -115,6 +125,9 @@ func init() {
 // runCheck is the main entry point for the check command.
 // It orchestrates the entire link checking workflow.
 func runCheck(_ *cobra.Command, args []string) {
+	// Initialize stats tracking
+	perf := stats.New()
+
 	// Validate mutually exclusive flags
 	if err := validateCheckFlags(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -130,18 +143,21 @@ func runCheck(_ *cobra.Command, args []string) {
 	// Determine if we should suppress progress output
 	useStructuredOutput := outputFormat != ""
 
-	// Find all markdown files
+	// Phase 1: Scan for files
+	perf.StartScan()
 	files, err := scanner.FindMarkdownFiles(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
 	}
+	perf.EndScan(len(files))
 
 	if !useStructuredOutput {
 		fmt.Printf("Found %d markdown file(s)\n", len(files))
 	}
 
-	// Extract all URLs from the files
+	// Phase 2: Parse links from files
+	perf.StartParse()
 	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
@@ -149,7 +165,8 @@ func runCheck(_ *cobra.Command, args []string) {
 	}
 
 	if len(parserLinks) == 0 {
-		handleEmptyLinks(files, useStructuredOutput)
+		perf.EndParse(0, 0, 0, 0)
+		handleEmptyLinksWithStats(files, useStructuredOutput, perf)
 		return
 	}
 
@@ -177,15 +194,20 @@ func runCheck(_ *cobra.Command, args []string) {
 	uniqueURLs := CountUniqueURLs(links)
 	duplicates := len(links) - uniqueURLs
 
+	perf.EndParse(len(parserLinks), uniqueURLs, duplicates, ignoredCount)
+
 	if !useStructuredOutput {
 		printProgressMessage(len(parserLinks), len(links), uniqueURLs, duplicates, ignoredCount)
 	}
 
 	// Handle case where all links were filtered out
 	if len(links) == 0 {
-		handleAllFiltered(files, useStructuredOutput, urlFilter)
+		handleAllFilteredWithStats(files, useStructuredOutput, urlFilter, perf)
 		return
 	}
+
+	// Phase 3: Check URLs
+	perf.StartCheck()
 
 	// Create checker with configured options
 	opts := checker.DefaultOptions().
@@ -199,14 +221,19 @@ func runCheck(_ *cobra.Command, args []string) {
 	results := c.CheckAll(links)
 	summary := checker.Summarize(results)
 
+	perf.EndCheck()
+
 	// Handle output
 	switch {
 	case useStructuredOutput:
-		handleStructuredOutput(files, results, summary, urlFilter)
+		handleStructuredOutputWithStats(files, results, summary, urlFilter, perf)
 	case outputFile != "":
-		handleFileOutput(files, results, summary, urlFilter)
+		handleFileOutputWithStats(files, results, summary, urlFilter, perf)
 	default:
 		outputText(results, summary, urlFilter)
+		if showStats {
+			fmt.Print(perf.String())
+		}
 	}
 
 	// Exit with code 1 if dead links or errors found (not for warnings)
@@ -232,29 +259,93 @@ func validateCheckFlags() error {
 	return nil
 }
 
-// handleEmptyLinks handles the case when no links are found in the files.
-func handleEmptyLinks(files []string, useStructuredOutput bool) {
+// handleEmptyLinksWithStats handles the case when no links are found in the files.
+func handleEmptyLinksWithStats(files []string, useStructuredOutput bool, perf *stats.Stats) {
 	switch {
 	case useStructuredOutput:
-		handleStructuredOutput(files, nil, checker.Summary{}, nil)
+		handleStructuredOutputWithStats(files, nil, checker.Summary{}, nil, perf)
 	case outputFile != "":
-		handleFileOutput(files, nil, checker.Summary{}, nil)
+		handleFileOutputWithStats(files, nil, checker.Summary{}, nil, perf)
 	default:
 		fmt.Println("No links found.")
+		if showStats {
+			fmt.Print(perf.String())
+		}
 	}
 }
 
-// handleAllFiltered handles the case when all links were filtered out.
-func handleAllFiltered(files []string, useStructuredOutput bool, urlFilter *filter.Filter) {
+// handleAllFilteredWithStats handles the case when all links were filtered out.
+func handleAllFilteredWithStats(files []string, useStructuredOutput bool, urlFilter *filter.Filter, perf *stats.Stats) {
 	switch {
 	case useStructuredOutput:
-		handleStructuredOutput(files, nil, checker.Summary{}, urlFilter)
+		handleStructuredOutputWithStats(files, nil, checker.Summary{}, urlFilter, perf)
 	case outputFile != "":
-		handleFileOutput(files, nil, checker.Summary{}, urlFilter)
+		handleFileOutputWithStats(files, nil, checker.Summary{}, urlFilter, perf)
 	default:
 		fmt.Println("\nAll links were ignored by filter rules.")
 		if showIgnored && urlFilter != nil {
 			printIgnoredURLs(urlFilter)
 		}
+		if showStats {
+			fmt.Print(perf.String())
+		}
 	}
+}
+
+// handleStructuredOutputWithStats outputs to stdout with optional stats.
+func handleStructuredOutputWithStats(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats,
+) {
+	report := buildReportWithStats(files, results, summary, urlFilter, perf)
+
+	data, err := output.FormatReport(report, output.Format(outputFormat))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(string(data))
+}
+
+// handleFileOutputWithStats writes to file with optional stats.
+func handleFileOutputWithStats(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats,
+) {
+	report := buildReportWithStats(files, results, summary, urlFilter, perf)
+
+	if err := output.WriteToFile(report, outputFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Wrote report to %s\n", outputFile)
+
+	// Also print summary to stdout
+	fmt.Printf("\nSummary: %d alive | %d warnings | %d dead | %d duplicates",
+		summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
+	if urlFilter != nil && urlFilter.IgnoredCount() > 0 {
+		fmt.Printf(" | %d ignored", urlFilter.IgnoredCount())
+	}
+	fmt.Println()
+
+	if showStats {
+		fmt.Print(perf.String())
+	}
+}
+
+// buildReportWithStats creates an output.Report with optional stats.
+func buildReportWithStats(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats,
+) *output.Report {
+	report := buildReport(files, results, summary, urlFilter)
+
+	// Add stats if requested
+	if showStats && perf != nil {
+		report.Stats = perf.ToJSON()
+	}
+
+	return report
 }

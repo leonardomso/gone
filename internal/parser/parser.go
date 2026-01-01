@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -392,9 +394,26 @@ func isHTTPURL(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }
 
-// ExtractLinksFromMultipleFiles processes multiple files and returns all links.
+// ExtractLinksFromMultipleFiles processes multiple files concurrently and returns all links.
+// Uses a worker pool bounded by the number of CPU cores for optimal parallelism.
 func ExtractLinksFromMultipleFiles(filePaths []string) ([]Link, error) {
-	var allLinks []Link
+	if len(filePaths) == 0 {
+		return nil, nil
+	}
+
+	// For small number of files, use sequential processing
+	if len(filePaths) <= 2 {
+		return extractLinksSequential(filePaths)
+	}
+
+	return extractLinksParallel(filePaths)
+}
+
+// extractLinksSequential processes files one at a time.
+// Used for small file counts where parallelism overhead isn't worth it.
+func extractLinksSequential(filePaths []string) ([]Link, error) {
+	// Pre-allocate with estimated capacity (avg ~30 links per file)
+	allLinks := make([]Link, 0, len(filePaths)*30)
 
 	for _, path := range filePaths {
 		links, err := ExtractLinks(path)
@@ -405,4 +424,53 @@ func ExtractLinksFromMultipleFiles(filePaths []string) ([]Link, error) {
 	}
 
 	return allLinks, nil
+}
+
+// extractLinksParallel processes files concurrently using a worker pool.
+func extractLinksParallel(filePaths []string) ([]Link, error) {
+	numWorkers := min(runtime.NumCPU(), len(filePaths))
+
+	// Channels for work distribution
+	jobs := make(chan string, len(filePaths))
+	results := make(chan fileResult, len(filePaths))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for range numWorkers {
+		wg.Go(func() {
+			for path := range jobs {
+				links, err := ExtractLinks(path)
+				results <- fileResult{links: links, err: err}
+			}
+		})
+	}
+
+	// Send jobs
+	for _, path := range filePaths {
+		jobs <- path
+	}
+	close(jobs)
+
+	// Wait for workers and close results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results - pre-allocate with estimated capacity
+	allLinks := make([]Link, 0, len(filePaths)*30)
+	for result := range results {
+		if result.err != nil {
+			return nil, result.err
+		}
+		allLinks = append(allLinks, result.links...)
+	}
+
+	return allLinks, nil
+}
+
+// fileResult holds the result of parsing a single file.
+type fileResult struct {
+	links []Link
+	err   error
 }

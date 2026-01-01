@@ -22,11 +22,12 @@ func TestDefaultOptions(t *testing.T) {
 
 	opts := DefaultOptions()
 
-	assert.Equal(t, 10, opts.Concurrency)
-	assert.Equal(t, 10*time.Second, opts.Timeout)
-	assert.Equal(t, 2, opts.MaxRetries)
-	assert.Equal(t, 10, opts.MaxRedirects)
-	assert.Equal(t, "gone-link-checker/1.0", opts.UserAgent)
+	// Optimized defaults for performance
+	assert.Equal(t, DefaultConcurrency, opts.Concurrency)
+	assert.Equal(t, DefaultTimeout, opts.Timeout)
+	assert.Equal(t, DefaultMaxRetries, opts.MaxRetries)
+	assert.Equal(t, DefaultMaxRedirects, opts.MaxRedirects)
+	assert.Equal(t, DefaultUserAgent, opts.UserAgent)
 }
 
 func TestOptionsWithMethods(t *testing.T) {
