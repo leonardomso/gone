@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/leonardomso/gone/internal/checker"
-	"github.com/leonardomso/gone/internal/config"
-	"github.com/leonardomso/gone/internal/filter"
 	"github.com/leonardomso/gone/internal/fixer"
 	"github.com/leonardomso/gone/internal/parser"
 	"github.com/leonardomso/gone/internal/scanner"
@@ -88,6 +86,8 @@ func init() {
 		"Skip loading .gonerc.yaml config file")
 }
 
+// runFix is the main entry point for the fix command.
+// It scans for redirects and applies fixes interactively or automatically.
 func runFix(_ *cobra.Command, args []string) {
 	// Determine the path to scan
 	path := "."
@@ -116,34 +116,28 @@ func runFix(_ *cobra.Command, args []string) {
 		return
 	}
 
-	// Load and create filter
-	urlFilter, err := createFixFilter()
+	// Load and create filter using shared helper
+	urlFilter, err := CreateFilter(FilterOptions{
+		Domains:  fixIgnoreDomains,
+		Patterns: fixIgnorePatterns,
+		Regex:    fixIgnoreRegex,
+		NoConfig: fixNoConfig,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Convert parser.Link to checker.Link, applying filter
-	links := make([]checker.Link, 0, len(parserLinks))
-	for _, pl := range parserLinks {
-		if urlFilter != nil && urlFilter.ShouldIgnore(pl.URL, pl.FilePath, pl.Line) {
-			continue
-		}
-		links = append(links, checker.Link{
-			URL:      pl.URL,
-			FilePath: pl.FilePath,
-			Line:     pl.Line,
-			Text:     pl.Text,
-		})
-	}
+	links := FilterParserLinks(parserLinks, urlFilter)
 
 	if len(links) == 0 {
 		fmt.Println("All links were ignored by filter rules.")
 		return
 	}
 
-	// Count unique URLs
-	uniqueURLs := countFixUniqueURLs(links)
+	// Count unique URLs using shared helper
+	uniqueURLs := CountUniqueURLs(links)
 	fmt.Printf("Checking %d unique URL(s) for redirects...\n", uniqueURLs)
 
 	// Create checker and check all links
@@ -192,7 +186,7 @@ func applyAllFixes(f *fixer.Fixer, changes []fixer.FileChanges) {
 	fmt.Println(fixer.DetailedSummary(results))
 }
 
-// runInteractiveFix prompts for each file.
+// runInteractiveFix prompts the user for each file before applying fixes.
 func runInteractiveFix(f *fixer.Fixer, changes []fixer.FileChanges) {
 	reader := bufio.NewReader(os.Stdin)
 	var allResults []fixer.FixResult
@@ -273,7 +267,7 @@ func runInteractiveFix(f *fixer.Fixer, changes []fixer.FileChanges) {
 	printInteractiveResults(allResults)
 }
 
-// printInteractiveHelp shows help for interactive mode.
+// printInteractiveHelp displays help for interactive mode options.
 func printInteractiveHelp() {
 	fmt.Println(`
 Interactive mode options:
@@ -284,7 +278,7 @@ Interactive mode options:
   ?, help - Show this help`)
 }
 
-// printInteractiveResults prints a summary of interactive session.
+// printInteractiveResults displays a summary of the interactive session.
 func printInteractiveResults(results []fixer.FixResult) {
 	applied := 0
 	skipped := 0
@@ -310,7 +304,7 @@ func printInteractiveResults(results []fixer.FixResult) {
 	}
 }
 
-// printFixSummary prints a summary of check results for context.
+// printFixSummary displays a summary of check results for context.
 func printFixSummary(results []checker.Result) {
 	summary := checker.Summarize(results)
 
@@ -330,43 +324,4 @@ func printFixSummary(results []checker.Result) {
 				notFixable)
 		}
 	}
-}
-
-// createFixFilter builds a filter from config file and CLI flags.
-func createFixFilter() (*filter.Filter, error) {
-	var cfg *config.Config
-
-	if !fixNoConfig {
-		var err error
-		cfg, err = config.Load()
-		if err != nil {
-			return nil, fmt.Errorf("loading config: %w", err)
-		}
-	} else {
-		cfg = &config.Config{}
-	}
-
-	// Merge CLI flags
-	cfg.Ignore.Domains = append(cfg.Ignore.Domains, fixIgnoreDomains...)
-	cfg.Ignore.Patterns = append(cfg.Ignore.Patterns, fixIgnorePatterns...)
-	cfg.Ignore.Regex = append(cfg.Ignore.Regex, fixIgnoreRegex...)
-
-	if cfg.IsEmpty() {
-		return nil, nil
-	}
-
-	return filter.New(filter.Config{
-		Domains:       cfg.Ignore.Domains,
-		GlobPatterns:  cfg.Ignore.Patterns,
-		RegexPatterns: cfg.Ignore.Regex,
-	})
-}
-
-// countFixUniqueURLs returns the number of unique URLs.
-func countFixUniqueURLs(links []checker.Link) int {
-	seen := map[string]bool{}
-	for _, l := range links {
-		seen[l.URL] = true
-	}
-	return len(seen)
 }

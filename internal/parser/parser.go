@@ -1,4 +1,6 @@
 // Package parser extracts URLs from markdown content using goldmark.
+// It supports various markdown link formats including inline links, reference links,
+// images, autolinks, and HTML anchor tags. URLs inside code blocks are ignored.
 package parser
 
 import (
@@ -346,6 +348,8 @@ func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
 }
 
 // buildLineIndex creates an index of byte offsets for the start of each line.
+// This index enables O(log n) line/column lookups from byte offsets,
+// which is more efficient than scanning from the start for each lookup.
 func buildLineIndex(content []byte) []int {
 	lines := []int{0} // First line starts at offset 0
 
@@ -358,8 +362,9 @@ func buildLineIndex(content []byte) []int {
 	return lines
 }
 
-// extractRefDefs extracts reference definitions from the content.
-// Format: [refname]: url.
+// extractRefDefs extracts reference-style link definitions from markdown content.
+// These are lines in the format: [refname]: url
+// Reference names are normalized to lowercase for case-insensitive matching.
 func extractRefDefs(content []byte) map[string]refDef {
 	defs := map[string]refDef{}
 	lines := bytes.Split(content, []byte("\n"))
@@ -382,6 +387,7 @@ func extractRefDefs(content []byte) map[string]refDef {
 }
 
 // isHTTPURL checks if a URL is an HTTP or HTTPS URL.
+// Non-HTTP URLs (mailto, tel, file, anchors, etc.) are excluded from link checking.
 func isHTTPURL(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }

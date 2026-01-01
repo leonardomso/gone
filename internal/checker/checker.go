@@ -32,8 +32,10 @@ func New(opts Options) *Checker {
 	}
 }
 
-// newHTTPClient creates an optimized HTTP client with proper timeouts
-// and connection pooling. This client does NOT follow redirects automatically.
+// newHTTPClient creates an optimized HTTP client for link checking.
+// It configures connection pooling for efficiency, proper timeouts for reliability,
+// and TLS settings for security. The client does NOT follow redirects automatically
+// so that redirect chains can be tracked and analyzed.
 func newHTTPClient(opts Options) *http.Client {
 	transport := &http.Transport{
 		// Connection pooling - reuse connections for efficiency
@@ -443,6 +445,9 @@ func (c *Checker) doRequestGetLocation(ctx context.Context, urlStr string) (int,
 }
 
 // setBrowserHeaders sets headers that mimic a real browser to bypass bot detection.
+// Some servers block requests that don't look like they come from a real browser.
+// These headers include User-Agent, Accept-Language, and Sec-Fetch-* headers
+// that modern browsers send.
 func (*Checker) setBrowserHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", BrowserUserAgent)
 	req.Header.Set("Accept",

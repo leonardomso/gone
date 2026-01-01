@@ -1,3 +1,6 @@
+// Package ui provides an interactive terminal user interface for link checking.
+// It uses the Bubble Tea framework to create a real-time TUI that displays
+// scanning progress, check results, and allows filtering by link status.
 package ui
 
 import (
@@ -17,6 +20,7 @@ import (
 // STATE MACHINE
 // =============================================================================
 
+// appState represents the current phase of the application lifecycle.
 type appState int
 
 const (
@@ -30,6 +34,7 @@ const (
 // FILTER TYPES
 // =============================================================================
 
+// filterType represents the active result filter in the UI.
 type filterType int
 
 const (
@@ -41,6 +46,7 @@ const (
 
 const filterCount = 4
 
+// String returns the human-readable label for the filter type.
 func (f filterType) String() string {
 	switch f {
 	case filterAll:
@@ -56,6 +62,7 @@ func (f filterType) String() string {
 	}
 }
 
+// Next returns the next filter type in the cycle.
 func (f filterType) Next() filterType {
 	return (f + 1) % filterCount
 }
@@ -205,6 +212,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// handleKeyMsg processes keyboard input and dispatches to appropriate handlers.
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global keys that work in any state
 	if key.Matches(msg, m.keys.Quit) {
@@ -237,6 +245,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleFilesFound processes the result of scanning for markdown files.
 func (m *Model) handleFilesFound(msg FilesFoundMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
 		m.err = msg.Err
@@ -248,6 +257,7 @@ func (m *Model) handleFilesFound(msg FilesFoundMsg) (tea.Model, tea.Cmd) {
 	return m, ExtractLinksCmd(msg.Files)
 }
 
+// handleLinksExtracted processes extracted links and starts the checking phase.
 func (m *Model) handleLinksExtracted(msg LinksExtractedMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
 		m.err = msg.Err
@@ -285,6 +295,7 @@ func countUniqueURLsFromLinks(links []checker.Link) int {
 	return len(seen)
 }
 
+// handleLinkChecked processes a single link check result and categorizes it.
 func (m *Model) handleLinkChecked(msg LinkCheckedMsg) (tea.Model, tea.Cmd) {
 	m.results = append(m.results, msg.Result)
 	m.checked++
@@ -304,6 +315,7 @@ func (m *Model) handleLinkChecked(msg LinkCheckedMsg) (tea.Model, tea.Cmd) {
 	return m, WaitForNextResultCmd(&m.checkerState)
 }
 
+// handleAllChecksComplete transitions to the results view after all checks finish.
 func (m *Model) handleAllChecksComplete() (tea.Model, tea.Cmd) {
 	m.state = stateResults
 	m.checkerState.ResultsChan = nil
@@ -391,6 +403,7 @@ func (m Model) View() string {
 	return s
 }
 
+// renderCheckingProgress renders the progress view during link checking.
 func (m Model) renderCheckingProgress() string {
 	var s string
 
@@ -411,6 +424,7 @@ func (m Model) renderCheckingProgress() string {
 	return s
 }
 
+// renderResults renders the final results view with filtering options.
 func (m Model) renderResults() string {
 	var s string
 
@@ -455,6 +469,7 @@ func (m Model) renderResults() string {
 	return s
 }
 
+// renderShortHelp renders a compact help line at the bottom of the screen.
 func (Model) renderShortHelp() string {
 	return HelpStyle.Render("↑/↓ navigate • f filter • ? help • q quit")
 }
