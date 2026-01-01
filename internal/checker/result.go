@@ -91,24 +91,26 @@ type Redirect struct {
 type Link struct {
 	URL      string // The URL to check
 	FilePath string // Source file where the link was found
-	Line     int    // Line number in the source file (0 if unknown)
 	Text     string // Link text (e.g., "Click here") for display purposes
+	Line     int    // Line number in the source file (0 if unknown)
 }
 
 // Result represents the outcome of checking a single link.
 type Result struct {
-	Link       Link       // The original link that was checked
-	StatusCode int        // HTTP status code (0 if request failed)
-	Status     LinkStatus // Computed status category
-	Error      string     // Error message if applicable
-
-	// Redirect info (populated when redirects occurred)
-	RedirectChain []Redirect // Full chain of redirects
-	FinalURL      string     // Final destination URL after following redirects
-	FinalStatus   int        // Status code of final destination
 
 	// Duplicate info (populated when Status == StatusDuplicate)
 	DuplicateOf *Result // Points to primary result if this is a duplicate
+	Link        Link    // The original link that was checked
+	Error       string  // Error message if applicable
+
+	FinalURL string // Final destination URL after following redirects
+
+	// Redirect info (populated when redirects occurred)
+	RedirectChain []Redirect // Full chain of redirects
+	StatusCode    int        // HTTP status code (0 if request failed)
+	Status        LinkStatus // Computed status category
+	FinalStatus   int        // Status code of final destination
+
 }
 
 // IsAlive returns true if the link is considered alive (2xx response).

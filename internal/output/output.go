@@ -52,20 +52,20 @@ func IsValidFormat(s string) bool {
 type IgnoredURL struct {
 	URL    string
 	File   string
-	Line   int
 	Reason string // "domain", "pattern", or "regex"
 	Rule   string // The rule that matched
+	Line   int
 }
 
 // Report contains all data needed for output formatting.
 type Report struct {
 	GeneratedAt time.Time
 	Files       []string
-	TotalLinks  int
-	UniqueURLs  int
-	Summary     checker.Summary
 	Results     []checker.Result
 	Ignored     []IgnoredURL
+	Summary     checker.Summary
+	TotalLinks  int
+	UniqueURLs  int
 }
 
 // Formatter is the interface that output formatters implement.

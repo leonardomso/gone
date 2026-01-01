@@ -50,30 +50,31 @@ func (t LinkType) String() string {
 
 // Link represents a URL found in a file.
 type Link struct {
-	URL      string   // The actual URL
-	FilePath string   // Which file it was found in
-	Line     int      // Line number (1-indexed)
-	Column   int      // Column position (1-indexed)
-	Text     string   // Link text or alt text for images
-	Type     LinkType // Type of link
+	URL      string // The actual URL
+	FilePath string // Which file it was found in
+	Text     string // Link text or alt text for images
 
 	// For reference links.
-	RefName    string // Reference name (e.g., "myref" in [text][myref])
-	RefDefLine int    // Line where [ref]: url is defined (0 if not reference)
+	RefName string   // Reference name (e.g., "myref" in [text][myref])
+	Line    int      // Line number (1-indexed)
+	Column  int      // Column position (1-indexed)
+	Type    LinkType // Type of link
+
+	RefDefLine int // Line where [ref]: url is defined (0 if not reference)
 }
 
 // linkExtractor walks the AST and extracts links.
 type linkExtractor struct {
+
+	// Track reference definitions: name -> (url, line)
+	refDefs  map[string]refDef
+	filePath string
 	links    []Link
 	source   []byte
-	filePath string
 	lines    []int // byte offset for start of each line
 
 	// Track if we're inside a code block
 	inCodeBlock bool
-
-	// Track reference definitions: name -> (url, line)
-	refDefs map[string]refDef
 }
 
 // refDef holds reference definition info.

@@ -66,10 +66,18 @@ func (f filterType) Next() filterType {
 
 // Model is the main application model.
 type Model struct {
-	// State
-	state    appState
-	quitting bool
-	err      error
+	list list.Model
+	help help.Model
+	err  error
+
+	// Checker state (for async operations)
+	checkerState CheckerState
+
+	urlFilter *filter.Filter
+
+	// Config
+	path string
+	keys KeyMap
 
 	// Data
 	files   []string
@@ -82,6 +90,11 @@ type Model struct {
 	deadLinks      []checker.Result
 	duplicateLinks []checker.Result
 
+	// Components
+	spinner spinner.Model
+	// State
+	state appState
+
 	// Progress tracking
 	checked    int
 	uniqueURLs int
@@ -90,23 +103,11 @@ type Model struct {
 	// Filter
 	filter filterType
 
-	// Components
-	spinner spinner.Model
-	list    list.Model
-	help    help.Model
-	keys    KeyMap
-
-	// Checker state (for async operations)
-	checkerState CheckerState
-
 	// UI state
 	width    int
 	height   int
+	quitting bool
 	showHelp bool
-
-	// Config
-	path      string
-	urlFilter *filter.Filter
 }
 
 // New creates and returns a new Model for the given path.

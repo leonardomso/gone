@@ -20,8 +20,8 @@ import (
 
 // Checker performs concurrent link checking with configurable options.
 type Checker struct {
-	opts   Options
 	client *http.Client
+	opts   Options
 }
 
 // New creates a new Checker with the given options.

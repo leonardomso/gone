@@ -4,6 +4,11 @@ import "time"
 
 // Options configures the behavior of the link checker.
 type Options struct {
+
+	// UserAgent is the User-Agent header sent with requests.
+	// Some servers block requests without a proper User-Agent.
+	// Default: "gone-link-checker/1.0"
+	UserAgent string
 	// Concurrency is the number of concurrent workers checking links.
 	// Higher values = faster checking but more resource usage.
 	// Default: 10
@@ -22,11 +27,6 @@ type Options struct {
 	// MaxRedirects is the maximum number of redirects to follow.
 	// Default: 10
 	MaxRedirects int
-
-	// UserAgent is the User-Agent header sent with requests.
-	// Some servers block requests without a proper User-Agent.
-	// Default: "gone-link-checker/1.0"
-	UserAgent string
 }
 
 // DefaultOptions returns sensible default configuration.

@@ -14,14 +14,14 @@ import (
 // Fix represents a single URL replacement to be made.
 type Fix struct {
 	FilePath    string // File containing the URL
-	Line        int    // Line number where the URL appears
 	OldURL      string // Original URL (redirect source)
 	NewURL      string // Final URL (redirect destination)
+	RefName     string // Reference name if IsRefDef (e.g., "myref" in [myref]: url)
+	Line        int    // Line number where the URL appears
 	Occurrences int    // How many times this exact URL appears in the file
 	LinkType    parser.LinkType
-	IsRefDef    bool   // Is this a reference definition line?
-	RefName     string // Reference name if IsRefDef (e.g., "myref" in [myref]: url)
-	RefUsages   int    // How many places use this reference
+	RefUsages   int  // How many places use this reference
+	IsRefDef    bool // Is this a reference definition line?
 }
 
 // FileChanges groups all fixes for a single file.
@@ -33,18 +33,18 @@ type FileChanges struct {
 
 // FixResult represents the outcome of applying fixes to a file.
 type FixResult struct {
+	Error       error
 	FilePath    string
+	ChangedURLs []URLChange
 	Applied     int
 	Skipped     int
-	Error       error
-	ChangedURLs []URLChange
 }
 
 // URLChange represents a single URL that was changed.
 type URLChange struct {
-	Line   int
 	OldURL string
 	NewURL string
+	Line   int
 }
 
 // Fixer handles URL replacement in markdown files.
