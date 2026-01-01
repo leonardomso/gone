@@ -1,0 +1,10 @@
+{
+  "https://example.com": "Example website",
+  "https://github.com": "GitHub",
+  "mappings": {
+    "https://api.example.com": {
+      "name": "API endpoint",
+      "status": "active"
+    }
+  }
+}

@@ -29,6 +29,10 @@ var (
 	showAll      bool
 	showStats    bool
 
+	// File type flags.
+	fileTypes  []string
+	strictMode bool
+
 	// Ignore flags.
 	ignoreDomains  []string
 	ignorePatterns []string
@@ -40,10 +44,12 @@ var (
 // checkCmd represents the check command.
 var checkCmd = &cobra.Command{
 	Use:   "check [path]",
-	Short: "Scan markdown files for dead links",
-	Long: `Scan a directory for markdown files and check all HTTP/HTTPS links.
+	Short: "Scan files for dead links",
+	Long: `Scan a directory for files and check all HTTP/HTTPS links.
 
 If no path is provided, scans the current directory.
+By default, scans only markdown files (.md).
+Use --types to scan additional file types.
 
 By default, shows warnings (redirects, blocked) and dead links.
 Use flags to filter what's displayed.
@@ -53,8 +59,10 @@ Exit codes:
   1 - Dead links or errors found
 
 Examples:
-  gone check                         # Scan current directory
+  gone check                         # Scan current directory (markdown only)
   gone check ./docs                  # Scan specific directory  
+  gone check --types=md,json,yaml    # Scan markdown, JSON, and YAML files
+  gone check --types=json --strict   # Fail on malformed JSON files
   gone check --format=json           # Output JSON to stdout
   gone check --format=yaml           # Output YAML to stdout
   gone check --output=report.json    # Write JSON report to file
@@ -66,6 +74,8 @@ Examples:
   gone check --stats                 # Show performance statistics
 
 Note: --format and --output are mutually exclusive.
+
+Supported file types: md, json, yaml
 
 Ignore patterns:
   gone check --ignore-domain=localhost,example.com
@@ -90,6 +100,12 @@ func init() {
 		"Output format for stdout: json, yaml, xml, junit, markdown")
 	checkCmd.Flags().StringVarP(&outputFile, "output", "o", "",
 		"Write report to file (format inferred from extension: .json, .yaml, .xml, .junit.xml, .md)")
+
+	// File type options
+	checkCmd.Flags().StringSliceVarP(&fileTypes, "types", "T", []string{"md"},
+		"File types to scan (comma-separated): md, json, yaml")
+	checkCmd.Flags().BoolVar(&strictMode, "strict", false,
+		"Fail on malformed files instead of skipping them")
 
 	// Filter flags
 	checkCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all results (alive, warnings, dead)")
@@ -171,17 +187,41 @@ func getPathArg(args []string) string {
 	return "."
 }
 
-// scanFiles scans for markdown files and returns the list.
+// scanFiles scans for files with the specified types and returns the list.
 func scanFiles(path string, perf *stats.Stats, useStructuredOutput bool) []string {
 	perf.StartScan()
-	files, err := scanner.FindMarkdownFiles(path)
+
+	// Validate file types
+	if err := validateFileTypes(fileTypes); err != nil {
+		exitOnError(err, "Invalid file types")
+	}
+
+	files, err := scanner.FindFilesByTypes(path, fileTypes)
 	exitOnError(err, "Error scanning directory")
 	perf.EndScan(len(files))
 
 	if !useStructuredOutput {
-		fmt.Printf("Found %d markdown file(s)\n", len(files))
+		typeStr := strings.Join(fileTypes, ", ")
+		fmt.Printf("Found %d file(s) of type(s): %s\n", len(files), typeStr)
 	}
 	return files
+}
+
+// validateFileTypes checks if all specified file types are supported.
+func validateFileTypes(types []string) error {
+	supportedTypes := parser.SupportedFileTypes()
+	supported := make(map[string]bool, len(supportedTypes))
+	for _, t := range supportedTypes {
+		supported[t] = true
+	}
+
+	for _, t := range types {
+		if !supported[strings.ToLower(t)] {
+			return fmt.Errorf("unsupported file type: %s (supported: %s)",
+				t, strings.Join(supportedTypes, ", "))
+		}
+	}
+	return nil
 }
 
 // parseAndFilterLinks extracts links from files and applies filters.
@@ -190,7 +230,7 @@ func parseAndFilterLinks(
 	files []string, perf *stats.Stats, useStructuredOutput bool,
 ) ([]checker.Link, *filter.Filter, bool) {
 	perf.StartParse()
-	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
+	parserLinks, err := parser.ExtractLinksFromMultipleFilesWithRegistry(files, strictMode)
 	exitOnError(err, "Error parsing files")
 
 	if len(parserLinks) == 0 {

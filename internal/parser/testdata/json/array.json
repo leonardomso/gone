@@ -1,0 +1,7 @@
+[
+  "https://example.com",
+  "https://github.com",
+  {
+    "url": "https://docs.example.com"
+  }
+]

@@ -11,17 +11,31 @@ import (
 )
 
 // ScanFilesCmdWithPath returns a command that scans for markdown files in the given path.
+//
+// Deprecated: Use ScanFilesCmdWithTypes instead.
 func ScanFilesCmdWithPath(path string) tea.Cmd {
+	return ScanFilesCmdWithTypes(path, []string{"md"})
+}
+
+// ScanFilesCmdWithTypes returns a command that scans for files of the given types in the given path.
+func ScanFilesCmdWithTypes(path string, fileTypes []string) tea.Cmd {
 	return func() tea.Msg {
-		files, err := scanner.FindMarkdownFiles(path)
+		files, err := scanner.FindFilesByTypes(path, fileTypes)
 		return FilesFoundMsg{Files: files, Err: err}
 	}
 }
 
 // ExtractLinksCmd extracts links from the given files.
+//
+// Deprecated: Use ExtractLinksCmdWithRegistry instead.
 func ExtractLinksCmd(files []string) tea.Cmd {
+	return ExtractLinksCmdWithRegistry(files, false)
+}
+
+// ExtractLinksCmdWithRegistry extracts links from the given files using the parser registry.
+func ExtractLinksCmdWithRegistry(files []string, strictMode bool) tea.Cmd {
 	return func() tea.Msg {
-		parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
+		parserLinks, err := parser.ExtractLinksFromMultipleFilesWithRegistry(files, strictMode)
 		if err != nil {
 			return LinksExtractedMsg{Err: err}
 		}

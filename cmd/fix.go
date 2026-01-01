@@ -25,6 +25,10 @@ var (
 	fixRetries     int
 	fixShowStats   bool
 
+	// File type flags.
+	fixFileTypes  []string
+	fixStrictMode bool
+
 	// Ignore flags (shared with check).
 	fixIgnoreDomains  []string
 	fixIgnorePatterns []string
@@ -35,11 +39,14 @@ var (
 // fixCmd represents the fix command.
 var fixCmd = &cobra.Command{
 	Use:   "fix [path]",
-	Short: "Automatically fix redirect URLs in markdown files",
-	Long: `Scan markdown files for redirect URLs and update them to their final destinations.
+	Short: "Automatically fix redirect URLs in files",
+	Long: `Scan files for redirect URLs and update them to their final destinations.
 
 Only redirects where the final destination returns 200 OK are fixed.
 Dead links, errors, and blocked URLs are not modified.
+
+By default, scans only markdown files (.md).
+Use --types to scan additional file types.
 
 By default, the command runs interactively, prompting for each file.
 Use --yes to apply all fixes automatically (useful for CI/scripts).
@@ -48,10 +55,13 @@ Use --dry-run to preview changes without modifying files.
 Examples:
   gone fix                      # Interactive mode, scan current directory
   gone fix ./docs               # Interactive mode, scan specific directory
+  gone fix --types=md,json      # Scan markdown and JSON files
   gone fix --dry-run            # Preview what would be fixed
   gone fix --yes                # Apply all fixes without prompting
   gone fix --yes --dry-run      # Preview all fixes (no prompts, no changes)
   gone fix --stats              # Show performance statistics
+
+Supported file types: md, json, yaml
 
 Ignore patterns (same as check command):
   gone fix --ignore-domain=localhost
@@ -69,6 +79,12 @@ func init() {
 		"Apply all fixes without prompting")
 	fixCmd.Flags().BoolVarP(&fixDryRun, "dry-run", "n", false,
 		"Preview changes without modifying files")
+
+	// File type options
+	fixCmd.Flags().StringSliceVarP(&fixFileTypes, "types", "T", []string{"md"},
+		"File types to scan (comma-separated): md, json, yaml")
+	fixCmd.Flags().BoolVar(&fixStrictMode, "strict", false,
+		"Fail on malformed files instead of skipping them")
 
 	// Performance options
 	fixCmd.Flags().IntVarP(&fixConcurrency, "concurrency", "c", checker.DefaultConcurrency,
@@ -105,20 +121,35 @@ func runFix(_ *cobra.Command, args []string) {
 		path = args[0]
 	}
 
+	// Validate file types
+	supportedTypes := parser.SupportedFileTypes()
+	supported := make(map[string]bool, len(supportedTypes))
+	for _, t := range supportedTypes {
+		supported[t] = true
+	}
+	for _, t := range fixFileTypes {
+		if !supported[strings.ToLower(t)] {
+			fmt.Fprintf(os.Stderr, "Error: unsupported file type: %s (supported: %s)\n",
+				t, strings.Join(supportedTypes, ", "))
+			os.Exit(1)
+		}
+	}
+
 	// Phase 1: Scan for files
 	perf.StartScan()
-	files, err := scanner.FindMarkdownFiles(path)
+	files, err := scanner.FindFilesByTypes(path, fixFileTypes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
 	}
 	perf.EndScan(len(files))
 
-	fmt.Printf("Found %d markdown file(s)\n", len(files))
+	typeStr := strings.Join(fixFileTypes, ", ")
+	fmt.Printf("Found %d file(s) of type(s): %s\n", len(files), typeStr)
 
 	// Phase 2: Parse links
 	perf.StartParse()
-	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
+	parserLinks, err := parser.ExtractLinksFromMultipleFilesWithRegistry(files, fixStrictMode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
 		os.Exit(1)

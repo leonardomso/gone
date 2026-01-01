@@ -1,0 +1,6 @@
+{
+  "name": "test",
+  "value": 42,
+  "enabled": true,
+  "items": ["a", "b", "c"]
+}

@@ -1,0 +1,14 @@
+project:
+  name: test
+  links:
+    homepage: https://example.com
+    documentation: https://docs.example.com/guide
+    repository:
+      url: https://github.com/example/repo
+      issues: https://github.com/example/repo/issues
+
+resources:
+  - name: API
+    url: https://api.example.com/v1
+  - name: CDN
+    url: https://cdn.example.com/assets

@@ -1,0 +1,11 @@
+defaults: &defaults
+  url: https://example.com
+  timeout: 30
+
+production:
+  <<: *defaults
+  url: https://prod.example.com
+
+staging:
+  <<: *defaults
+  url: https://staging.example.com

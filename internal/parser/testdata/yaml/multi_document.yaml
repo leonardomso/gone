@@ -1,0 +1,11 @@
+---
+name: document1
+url: https://example.com
+---
+name: document2
+url: https://github.com
+---
+name: document3
+links:
+  - https://api.example.com
+  - https://docs.example.com

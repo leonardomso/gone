@@ -1,0 +1,4 @@
+name: test
+broken: [
+  - invalid unclosed bracket
+key: value

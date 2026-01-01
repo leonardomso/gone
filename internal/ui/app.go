@@ -83,8 +83,10 @@ type Model struct {
 	urlFilter *filter.Filter
 
 	// Config
-	path string
-	keys KeyMap
+	path       string
+	keys       KeyMap
+	fileTypes  []string
+	strictMode bool
 
 	// Data
 	files   []string
@@ -119,10 +121,16 @@ type Model struct {
 
 // New creates and returns a new Model for the given path.
 // Optional filter can be passed to ignore certain URLs.
-func New(path string, urlFilter *filter.Filter) Model {
+// fileTypes specifies which file types to scan (e.g., ["md", "json"]).
+// strictMode causes parsing to fail on malformed files.
+func New(path string, urlFilter *filter.Filter, fileTypes []string, strictMode bool) Model {
 	if path == "" {
 		path = "."
 	}
+	if len(fileTypes) == 0 {
+		fileTypes = []string{"md"}
+	}
+
 	// Initialize spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -148,20 +156,22 @@ func New(path string, urlFilter *filter.Filter) Model {
 	l.Styles.Title = TitleStyle
 
 	return Model{
-		state:     stateScanning,
-		spinner:   s,
-		list:      l,
-		help:      h,
-		keys:      k,
-		filter:    filterAll,
-		path:      path,
-		urlFilter: urlFilter,
+		state:      stateScanning,
+		spinner:    s,
+		list:       l,
+		help:       h,
+		keys:       k,
+		filter:     filterAll,
+		path:       path,
+		urlFilter:  urlFilter,
+		fileTypes:  fileTypes,
+		strictMode: strictMode,
 	}
 }
 
 // Init initializes the model.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, ScanFilesCmdWithPath(m.path))
+	return tea.Batch(m.spinner.Tick, ScanFilesCmdWithTypes(m.path, m.fileTypes))
 }
 
 // =============================================================================
@@ -245,7 +255,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleFilesFound processes the result of scanning for markdown files.
+// handleFilesFound processes the result of scanning for files.
 func (m *Model) handleFilesFound(msg FilesFoundMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
 		m.err = msg.Err
@@ -254,7 +264,7 @@ func (m *Model) handleFilesFound(msg FilesFoundMsg) (tea.Model, tea.Cmd) {
 	}
 	m.files = msg.Files
 	m.state = stateExtracting
-	return m, ExtractLinksCmd(msg.Files)
+	return m, ExtractLinksCmdWithRegistry(msg.Files, m.strictMode)
 }
 
 // handleLinksExtracted processes extracted links and starts the checking phase.
@@ -381,7 +391,7 @@ func (m Model) View() string {
 	// State-specific view
 	switch m.state {
 	case stateScanning:
-		s += m.spinner.View() + " Scanning for markdown files..."
+		s += m.spinner.View() + " Scanning for files..."
 
 	case stateExtracting:
 		s += m.spinner.View() + fmt.Sprintf(" Found %d file(s), extracting links...", len(m.files))

@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/leonardomso/gone/internal/parser"
 	"github.com/leonardomso/gone/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,6 +14,9 @@ import (
 
 // Interactive command flags (separate from check command).
 var (
+	iFileTypes  []string
+	iStrictMode bool
+
 	iIgnoreDomains  []string
 	iIgnorePatterns []string
 	iIgnoreRegex    []string
@@ -25,6 +30,8 @@ var interactiveCmd = &cobra.Command{
 	Long: `Launch an interactive terminal UI to scan for dead links.
 
 If no path is provided, scans the current directory.
+By default, scans only markdown files (.md).
+Use --types to scan additional file types.
 
 Navigate through results, see progress in real-time, and 
 filter results by type.
@@ -34,6 +41,8 @@ Controls:
   f             Cycle through filters (All Issues → Warnings → Dead → Duplicates)
   ?             Toggle help
   q             Quit
+
+Supported file types: md, json, yaml
 
 Ignore patterns:
   gone interactive --ignore-domain=localhost,example.com
@@ -45,6 +54,12 @@ Ignore patterns:
 
 func init() {
 	rootCmd.AddCommand(interactiveCmd)
+
+	// File type options
+	interactiveCmd.Flags().StringSliceVarP(&iFileTypes, "types", "T", []string{"md"},
+		"File types to scan (comma-separated): md, json, yaml")
+	interactiveCmd.Flags().BoolVar(&iStrictMode, "strict", false,
+		"Fail on malformed files instead of skipping them")
 
 	// Ignore options (same as check command)
 	interactiveCmd.Flags().StringSliceVar(&iIgnoreDomains, "ignore-domain", nil,
@@ -64,6 +79,20 @@ func runInteractive(_ *cobra.Command, args []string) {
 		path = args[0]
 	}
 
+	// Validate file types
+	supportedTypes := parser.SupportedFileTypes()
+	supported := make(map[string]bool, len(supportedTypes))
+	for _, t := range supportedTypes {
+		supported[t] = true
+	}
+	for _, t := range iFileTypes {
+		if !supported[strings.ToLower(t)] {
+			fmt.Fprintf(os.Stderr, "Error: unsupported file type: %s (supported: %s)\n",
+				t, strings.Join(supportedTypes, ", "))
+			os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
+		}
+	}
+
 	// Create filter from config and flags using shared helper
 	urlFilter, err := CreateFilter(FilterOptions{
 		Domains:  iIgnoreDomains,
@@ -76,7 +105,7 @@ func runInteractive(_ *cobra.Command, args []string) {
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
 	}
 
-	p := tea.NewProgram(ui.New(path, urlFilter), tea.WithAltScreen())
+	p := tea.NewProgram(ui.New(path, urlFilter, iFileTypes, iStrictMode), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running interactive mode: %v\n", err)
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points

@@ -5,6 +5,7 @@ package parser
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"regexp"
 	"runtime"
@@ -493,4 +494,163 @@ func extractLinksParallel(filePaths []string) ([]Link, error) {
 type fileResult struct {
 	links []Link
 	err   error
+}
+
+// ParseError represents an error that occurred during file parsing.
+// It includes the file path and the underlying error.
+type ParseError struct {
+	FilePath string
+	Err      error
+}
+
+func (e *ParseError) Error() string {
+	return e.FilePath + ": " + e.Err.Error()
+}
+
+func (e *ParseError) Unwrap() error {
+	return e.Err
+}
+
+// ExtractLinksWithRegistry reads a file and returns all HTTP/HTTPS links found,
+// using the appropriate parser from the registry based on file extension.
+// If strict is true, validation errors will cause the function to return an error.
+func ExtractLinksWithRegistry(filePath string, strict bool) ([]Link, error) {
+	// Get parser for this file type
+	p, ok := GetParserForFile(filePath)
+	if !ok {
+		return nil, &ParseError{
+			FilePath: filePath,
+			Err:      fmt.Errorf("no parser registered for file extension"),
+		}
+	}
+
+	// Read file content
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, &ParseError{FilePath: filePath, Err: err}
+	}
+
+	// Validate content if strict mode
+	if strict {
+		if err := p.Validate(content); err != nil {
+			return nil, &ParseError{FilePath: filePath, Err: err}
+		}
+	} else {
+		// In non-strict mode, validate but only skip on error
+		if err := p.Validate(content); err != nil {
+			// Return empty links instead of error (skip file)
+			return nil, nil
+		}
+	}
+
+	// Parse the file
+	links, err := p.Parse(filePath, content)
+	if err != nil {
+		return nil, &ParseError{FilePath: filePath, Err: err}
+	}
+
+	return links, nil
+}
+
+// ExtractLinksFromMultipleFilesWithRegistry processes multiple files concurrently
+// using the appropriate parser for each file type from the registry.
+// If strict is true, validation errors will cause the function to return an error.
+// Files with unsupported extensions are silently skipped.
+func ExtractLinksFromMultipleFilesWithRegistry(filePaths []string, strict bool) ([]Link, error) {
+	if len(filePaths) == 0 {
+		return nil, nil
+	}
+
+	// Filter to only supported files
+	supportedFiles := make([]string, 0, len(filePaths))
+	for _, path := range filePaths {
+		if _, ok := GetParserForFile(path); ok {
+			supportedFiles = append(supportedFiles, path)
+		}
+	}
+
+	if len(supportedFiles) == 0 {
+		return nil, nil
+	}
+
+	// For small number of files, use sequential processing
+	if len(supportedFiles) <= 2 {
+		return extractLinksSequentialWithRegistry(supportedFiles, strict)
+	}
+
+	return extractLinksParallelWithRegistry(supportedFiles, strict)
+}
+
+// extractLinksSequentialWithRegistry processes files one at a time using the registry.
+func extractLinksSequentialWithRegistry(filePaths []string, strict bool) ([]Link, error) {
+	allLinks := make([]Link, 0, len(filePaths)*30)
+
+	for _, path := range filePaths {
+		links, err := ExtractLinksWithRegistry(path, strict)
+		if err != nil {
+			if strict {
+				return nil, err
+			}
+			// In non-strict mode, skip files with errors
+			continue
+		}
+		if links != nil {
+			allLinks = append(allLinks, links...)
+		}
+	}
+
+	return allLinks, nil
+}
+
+// extractLinksParallelWithRegistry processes files concurrently using the registry.
+func extractLinksParallelWithRegistry(filePaths []string, strict bool) ([]Link, error) {
+	numWorkers := min(runtime.NumCPU(), len(filePaths))
+
+	type job struct {
+		path   string
+		strict bool
+	}
+
+	jobs := make(chan job, len(filePaths))
+	results := make(chan fileResult, len(filePaths))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for range numWorkers {
+		wg.Go(func() {
+			for j := range jobs {
+				links, err := ExtractLinksWithRegistry(j.path, j.strict)
+				results <- fileResult{links: links, err: err}
+			}
+		})
+	}
+
+	// Send jobs
+	for _, path := range filePaths {
+		jobs <- job{path: path, strict: strict}
+	}
+	close(jobs)
+
+	// Wait for workers and close results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
+	allLinks := make([]Link, 0, len(filePaths)*30)
+	for result := range results {
+		if result.err != nil {
+			if strict {
+				return nil, result.err
+			}
+			// In non-strict mode, skip files with errors
+			continue
+		}
+		if result.links != nil {
+			allLinks = append(allLinks, result.links...)
+		}
+	}
+
+	return allLinks, nil
 }
