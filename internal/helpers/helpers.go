@@ -6,10 +6,14 @@ import "strings"
 
 // TruncateText shortens text to the specified maximum length, adding "..." if truncated.
 // Returns empty string if input is empty or only whitespace.
+// If maxLen is less than 4, returns the original text (can't fit "..." plus content).
 func TruncateText(text string, maxLen int) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return ""
+	}
+	if maxLen < 4 {
+		return text
 	}
 	if len(text) <= maxLen {
 		return text
