@@ -10,12 +10,12 @@ type YAMLFormatter struct{}
 // yamlOutput is the YAML structure for output.
 type yamlOutput struct {
 	GeneratedAt string        `yaml:"generated_at"`
+	Results     []yamlResult  `yaml:"results"`
+	Ignored     []yamlIgnored `yaml:"ignored,omitempty"`
+	Summary     yamlSummary   `yaml:"summary"`
 	TotalFiles  int           `yaml:"total_files"`
 	TotalLinks  int           `yaml:"total_links"`
 	UniqueURLs  int           `yaml:"unique_urls"`
-	Summary     yamlSummary   `yaml:"summary"`
-	Results     []yamlResult  `yaml:"results"`
-	Ignored     []yamlIgnored `yaml:"ignored,omitempty"`
 }
 
 type yamlSummary struct {
@@ -31,15 +31,15 @@ type yamlSummary struct {
 type yamlResult struct {
 	URL           string         `yaml:"url"`
 	FilePath      string         `yaml:"file_path"`
-	Line          int            `yaml:"line,omitempty"`
 	Text          string         `yaml:"text,omitempty"`
-	StatusCode    int            `yaml:"status_code"`
 	Status        string         `yaml:"status"`
 	Error         string         `yaml:"error,omitempty"`
-	RedirectChain []yamlRedirect `yaml:"redirect_chain,omitempty"`
 	FinalURL      string         `yaml:"final_url,omitempty"`
-	FinalStatus   int            `yaml:"final_status,omitempty"`
 	DuplicateOf   string         `yaml:"duplicate_of,omitempty"`
+	RedirectChain []yamlRedirect `yaml:"redirect_chain,omitempty"`
+	Line          int            `yaml:"line,omitempty"`
+	StatusCode    int            `yaml:"status_code"`
+	FinalStatus   int            `yaml:"final_status,omitempty"`
 }
 
 type yamlRedirect struct {
@@ -50,9 +50,9 @@ type yamlRedirect struct {
 type yamlIgnored struct {
 	URL    string `yaml:"url"`
 	File   string `yaml:"file"`
-	Line   int    `yaml:"line,omitempty"`
 	Reason string `yaml:"reason"`
 	Rule   string `yaml:"rule"`
+	Line   int    `yaml:"line,omitempty"`
 }
 
 // Format implements Formatter.

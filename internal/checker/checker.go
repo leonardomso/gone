@@ -5,12 +5,11 @@ package checker
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,8 +19,8 @@ import (
 
 // Checker performs concurrent link checking with configurable options.
 type Checker struct {
-	opts   Options
 	client *http.Client
+	opts   Options
 }
 
 // New creates a new Checker with the given options.
@@ -32,15 +31,17 @@ func New(opts Options) *Checker {
 	}
 }
 
-// newHTTPClient creates an optimized HTTP client with proper timeouts
-// and connection pooling. This client does NOT follow redirects automatically.
+// newHTTPClient creates an optimized HTTP client for link checking.
+// It configures connection pooling for efficiency, proper timeouts for reliability,
+// and TLS settings for security. The client does NOT follow redirects automatically
+// so that redirect chains can be tracked and analyzed.
 func newHTTPClient(opts Options) *http.Client {
 	transport := &http.Transport{
-		// Connection pooling - reuse connections for efficiency
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		MaxConnsPerHost:     20,
-		IdleConnTimeout:     90 * time.Second,
+		// Connection pooling - optimized for high concurrency
+		MaxIdleConns:        500,              // Support many concurrent connections
+		MaxIdleConnsPerHost: 50,               // More per-host parallelism
+		MaxConnsPerHost:     100,              // Support high concurrency per domain
+		IdleConnTimeout:     30 * time.Second, // Faster cleanup of idle connections
 
 		// TLS configuration with minimum version for security
 		TLSClientConfig: &tls.Config{
@@ -48,17 +49,18 @@ func newHTTPClient(opts Options) *http.Client {
 			MinVersion:         tls.VersionTLS12,
 		},
 
-		// Timeout layers for different phases
+		// Timeout layers for different phases - tuned for speed
 		DialContext: (&net.Dialer{
 			Timeout:   opts.Timeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second, // Faster TLS handshake timeout
 		ResponseHeaderTimeout: opts.Timeout,
 		ExpectContinueTimeout: 1 * time.Second,
 
-		// Enable compression
+		// Enable compression and HTTP/2
 		DisableCompression: false,
+		ForceAttemptHTTP2:  true, // Enable HTTP/2 for connection multiplexing
 	}
 
 	return &http.Client{
@@ -72,8 +74,9 @@ func newHTTPClient(opts Options) *http.Client {
 }
 
 // CheckAll checks all links and returns results after all are complete.
-// This is a blocking operation.
+// This is a blocking operation. Results slice is pre-allocated for efficiency.
 func (c *Checker) CheckAll(links []Link) []Result {
+	// Pre-allocate with exact capacity to avoid reallocations
 	results := make([]Result, 0, len(links))
 	for result := range c.Check(context.Background(), links) {
 		results = append(results, result)
@@ -93,8 +96,9 @@ func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
 		defer close(results)
 
 		// Deduplicate: group links by URL
-		urlToLinks := map[string][]Link{}
-		var urlOrder []string // Preserve order for deterministic output
+		// Pre-allocate with estimated capacity (assume ~70% unique URLs)
+		urlToLinks := make(map[string][]Link, len(links)*7/10)
+		urlOrder := make([]string, 0, len(links)*7/10) // Preserve order for deterministic output
 		for _, link := range links {
 			if _, exists := urlToLinks[link.URL]; !exists {
 				urlOrder = append(urlOrder, link.URL)
@@ -109,7 +113,7 @@ func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
 		}
 
 		// Store primary results for duplicates
-		primaryResults := map[string]*Result{}
+		primaryResults := make(map[string]*Result, len(urlOrder))
 		var resultsMu sync.Mutex
 
 		// Channel for primary results from workers
@@ -222,6 +226,7 @@ func (c *Checker) checkWithRetry(ctx context.Context, link Link) Result {
 }
 
 // backoffDelay calculates delay for retry with exponential backoff and jitter.
+// Uses math/rand/v2 which is auto-seeded and sufficient for non-cryptographic jitter.
 func backoffDelay(attempt int) time.Duration {
 	// Base delay: 1s, 2s, 4s, etc.
 	attempt = max(attempt, 1)
@@ -230,13 +235,12 @@ func backoffDelay(attempt int) time.Duration {
 	// Cap at 30 seconds
 	base = min(base, 30*time.Second)
 
-	// Add jitter (0-25% of base) using crypto/rand for security
+	// Add jitter (0-25% of base) - math/rand/v2 is auto-seeded
+	// Using math/rand instead of crypto/rand for performance (jitter doesn't need crypto security)
 	maxJitter := int64(base / 4)
 	if maxJitter > 0 {
-		n, err := rand.Int(rand.Reader, big.NewInt(maxJitter))
-		if err == nil {
-			return base + time.Duration(n.Int64())
-		}
+		//nolint:gosec // jitter doesn't need crypto-grade randomness
+		return base + time.Duration(rand.Int64N(maxJitter))
 	}
 
 	return base
@@ -347,7 +351,8 @@ func (c *Checker) handleBlockedFinal(ctx context.Context, finalURL string, resul
 //
 //nolint:gocritic // Named returns would make this function harder to read
 func (c *Checker) followRedirectChain(ctx context.Context, startURL string) ([]Redirect, string, int, error) {
-	var chain []Redirect
+	// Pre-allocate for typical redirect chain (1-3 hops)
+	chain := make([]Redirect, 0, 4)
 	currentURL := startURL
 
 	for i := 0; i < c.opts.MaxRedirects; i++ {
@@ -412,8 +417,9 @@ func (c *Checker) doRequest(ctx context.Context, method, urlStr string, useBrows
 	}()
 
 	// For GET requests, drain body to allow connection reuse
+	// 64KB is sufficient to keep connections alive without wasting bandwidth
 	if method == http.MethodGet {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024*1024)) // 1MB max
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024)) // 64KB max
 	}
 
 	return resp.StatusCode, nil
@@ -443,6 +449,9 @@ func (c *Checker) doRequestGetLocation(ctx context.Context, urlStr string) (int,
 }
 
 // setBrowserHeaders sets headers that mimic a real browser to bypass bot detection.
+// Some servers block requests that don't look like they come from a real browser.
+// These headers include User-Agent, Accept-Language, and Sec-Fetch-* headers
+// that modern browsers send.
 func (*Checker) setBrowserHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", BrowserUserAgent)
 	req.Header.Set("Accept",

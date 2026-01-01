@@ -12,12 +12,12 @@ type JSONFormatter struct{}
 // jsonOutput is the JSON structure for output.
 type jsonOutput struct {
 	GeneratedAt string        `json:"generated_at"`
+	Results     []jsonResult  `json:"results"`
+	Ignored     []jsonIgnored `json:"ignored,omitempty"`
+	Summary     jsonSummary   `json:"summary"`
 	TotalFiles  int           `json:"total_files"`
 	TotalLinks  int           `json:"total_links"`
 	UniqueURLs  int           `json:"unique_urls"`
-	Summary     jsonSummary   `json:"summary"`
-	Results     []jsonResult  `json:"results"`
-	Ignored     []jsonIgnored `json:"ignored,omitempty"`
 }
 
 type jsonSummary struct {
@@ -33,15 +33,15 @@ type jsonSummary struct {
 type jsonResult struct {
 	URL           string         `json:"url"`
 	FilePath      string         `json:"file_path"`
-	Line          int            `json:"line,omitempty"`
 	Text          string         `json:"text,omitempty"`
-	StatusCode    int            `json:"status_code"`
 	Status        string         `json:"status"`
 	Error         string         `json:"error,omitempty"`
-	RedirectChain []jsonRedirect `json:"redirect_chain,omitempty"`
 	FinalURL      string         `json:"final_url,omitempty"`
-	FinalStatus   int            `json:"final_status,omitempty"`
 	DuplicateOf   string         `json:"duplicate_of,omitempty"`
+	RedirectChain []jsonRedirect `json:"redirect_chain,omitempty"`
+	Line          int            `json:"line,omitempty"`
+	StatusCode    int            `json:"status_code"`
+	FinalStatus   int            `json:"final_status,omitempty"`
 }
 
 type jsonRedirect struct {
@@ -52,9 +52,9 @@ type jsonRedirect struct {
 type jsonIgnored struct {
 	URL    string `json:"url"`
 	File   string `json:"file"`
-	Line   int    `json:"line,omitempty"`
 	Reason string `json:"reason"`
 	Rule   string `json:"rule"`
+	Line   int    `json:"line,omitempty"`
 }
 
 // Format implements Formatter.

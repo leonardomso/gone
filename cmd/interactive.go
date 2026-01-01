@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/leonardomso/gone/internal/config"
-	"github.com/leonardomso/gone/internal/filter"
 	"github.com/leonardomso/gone/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -59,14 +57,20 @@ func init() {
 		"Skip loading .gonerc.yaml config file")
 }
 
+// runInteractive launches the interactive TUI for link checking.
 func runInteractive(_ *cobra.Command, args []string) {
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
 
-	// Create filter from config and flags
-	urlFilter, err := createInteractiveFilter()
+	// Create filter from config and flags using shared helper
+	urlFilter, err := CreateFilter(FilterOptions{
+		Domains:  iIgnoreDomains,
+		Patterns: iIgnorePatterns,
+		Regex:    iIgnoreRegex,
+		NoConfig: iNoConfig,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
@@ -77,37 +81,4 @@ func runInteractive(_ *cobra.Command, args []string) {
 		fmt.Printf("Error running interactive mode: %v\n", err)
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
 	}
-}
-
-// createInteractiveFilter builds a filter from config file and CLI flags.
-func createInteractiveFilter() (*filter.Filter, error) {
-	var cfg *config.Config
-
-	// Load config file unless --no-config is set
-	if !iNoConfig {
-		var err error
-		cfg, err = config.Load()
-		if err != nil {
-			return nil, fmt.Errorf("loading config: %w", err)
-		}
-	} else {
-		cfg = &config.Config{}
-	}
-
-	// Merge CLI flags (additive)
-	cfg.Ignore.Domains = append(cfg.Ignore.Domains, iIgnoreDomains...)
-	cfg.Ignore.Patterns = append(cfg.Ignore.Patterns, iIgnorePatterns...)
-	cfg.Ignore.Regex = append(cfg.Ignore.Regex, iIgnoreRegex...)
-
-	// If no ignore rules, return nil (no filtering)
-	if cfg.IsEmpty() {
-		return nil, nil
-	}
-
-	// Create filter
-	return filter.New(filter.Config{
-		Domains:       cfg.Ignore.Domains,
-		GlobPatterns:  cfg.Ignore.Patterns,
-		RegexPatterns: cfg.Ignore.Regex,
-	})
 }

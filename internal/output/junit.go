@@ -15,25 +15,25 @@ type JUnitFormatter struct{}
 type junitTestSuites struct {
 	XMLName   xml.Name         `xml:"testsuites"`
 	Name      string           `xml:"name,attr"`
+	TestSuite []junitTestSuite `xml:"testsuite"`
 	Tests     int              `xml:"tests,attr"`
 	Failures  int              `xml:"failures,attr"`
 	Errors    int              `xml:"errors,attr"`
-	TestSuite []junitTestSuite `xml:"testsuite"`
 }
 
 type junitTestSuite struct {
 	Name      string          `xml:"name,attr"`
+	TestCases []junitTestCase `xml:"testcase"`
 	Tests     int             `xml:"tests,attr"`
 	Failures  int             `xml:"failures,attr"`
 	Errors    int             `xml:"errors,attr"`
-	TestCases []junitTestCase `xml:"testcase"`
 }
 
 type junitTestCase struct {
-	Name      string        `xml:"name,attr"`
-	ClassName string        `xml:"classname,attr"`
 	Failure   *junitFailure `xml:"failure,omitempty"`
 	Error     *junitError   `xml:"error,omitempty"`
+	Name      string        `xml:"name,attr"`
+	ClassName string        `xml:"classname,attr"`
 }
 
 type junitFailure struct {

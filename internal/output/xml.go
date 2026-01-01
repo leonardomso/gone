@@ -9,14 +9,14 @@ type XMLFormatter struct{}
 
 // xmlOutput is the XML structure for output.
 type xmlOutput struct {
+	Ignored     *xmlIgnored `xml:"ignored,omitempty"`
 	XMLName     xml.Name    `xml:"report"`
 	GeneratedAt string      `xml:"generated_at,attr"`
+	Results     xmlResults  `xml:"results"`
+	Summary     xmlSummary  `xml:"summary"`
 	TotalFiles  int         `xml:"total_files,attr"`
 	TotalLinks  int         `xml:"total_links,attr"`
 	UniqueURLs  int         `xml:"unique_urls,attr"`
-	Summary     xmlSummary  `xml:"summary"`
-	Results     xmlResults  `xml:"results"`
-	Ignored     *xmlIgnored `xml:"ignored,omitempty"`
 }
 
 type xmlSummary struct {
@@ -34,17 +34,17 @@ type xmlResults struct {
 }
 
 type xmlResult struct {
+	RedirectChain *xmlRedirectChain `xml:"redirect_chain,omitempty"`
 	Status        string            `xml:"status,attr"`
-	StatusCode    int               `xml:"status_code,attr"`
 	URL           string            `xml:"url"`
 	FilePath      string            `xml:"file"`
-	Line          int               `xml:"line,omitempty"`
 	Text          string            `xml:"text,omitempty"`
 	Error         string            `xml:"error,omitempty"`
-	RedirectChain *xmlRedirectChain `xml:"redirect_chain,omitempty"`
 	FinalURL      string            `xml:"final_url,omitempty"`
-	FinalStatus   int               `xml:"final_status,omitempty"`
 	DuplicateOf   string            `xml:"duplicate_of,omitempty"`
+	StatusCode    int               `xml:"status_code,attr"`
+	Line          int               `xml:"line,omitempty"`
+	FinalStatus   int               `xml:"final_status,omitempty"`
 }
 
 type xmlRedirectChain struct {
@@ -63,9 +63,9 @@ type xmlIgnored struct {
 type xmlIgnoredItem struct {
 	URL    string `xml:"url"`
 	File   string `xml:"file"`
-	Line   int    `xml:"line,omitempty"`
 	Reason string `xml:"reason"`
 	Rule   string `xml:"rule"`
+	Line   int    `xml:"line,omitempty"`
 }
 
 // Format implements Formatter.

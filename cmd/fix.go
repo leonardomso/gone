@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"github.com/leonardomso/gone/internal/checker"
-	"github.com/leonardomso/gone/internal/config"
-	"github.com/leonardomso/gone/internal/filter"
 	"github.com/leonardomso/gone/internal/fixer"
 	"github.com/leonardomso/gone/internal/parser"
 	"github.com/leonardomso/gone/internal/scanner"
+	"github.com/leonardomso/gone/internal/stats"
 
 	"github.com/spf13/cobra"
 )
@@ -24,6 +23,7 @@ var (
 	fixConcurrency int
 	fixTimeout     int
 	fixRetries     int
+	fixShowStats   bool
 
 	// Ignore flags (shared with check).
 	fixIgnoreDomains  []string
@@ -51,6 +51,7 @@ Examples:
   gone fix --dry-run            # Preview what would be fixed
   gone fix --yes                # Apply all fixes without prompting
   gone fix --yes --dry-run      # Preview all fixes (no prompts, no changes)
+  gone fix --stats              # Show performance statistics
 
 Ignore patterns (same as check command):
   gone fix --ignore-domain=localhost
@@ -70,12 +71,16 @@ func init() {
 		"Preview changes without modifying files")
 
 	// Performance options
-	fixCmd.Flags().IntVarP(&fixConcurrency, "concurrency", "c", 10,
+	fixCmd.Flags().IntVarP(&fixConcurrency, "concurrency", "c", checker.DefaultConcurrency,
 		"Number of concurrent workers")
-	fixCmd.Flags().IntVarP(&fixTimeout, "timeout", "t", 10,
+	fixCmd.Flags().IntVarP(&fixTimeout, "timeout", "t", int(checker.DefaultTimeout.Seconds()),
 		"Timeout per request in seconds")
-	fixCmd.Flags().IntVarP(&fixRetries, "retries", "r", 2,
+	fixCmd.Flags().IntVarP(&fixRetries, "retries", "r", checker.DefaultMaxRetries,
 		"Number of retries for failed requests")
+
+	// Stats flag
+	fixCmd.Flags().BoolVar(&fixShowStats, "stats", false,
+		"Show detailed performance statistics")
 
 	// Ignore options
 	fixCmd.Flags().StringSliceVar(&fixIgnoreDomains, "ignore-domain", nil,
@@ -88,23 +93,31 @@ func init() {
 		"Skip loading .gonerc.yaml config file")
 }
 
+// runFix is the main entry point for the fix command.
+// It scans for redirects and applies fixes interactively or automatically.
 func runFix(_ *cobra.Command, args []string) {
+	// Initialize stats tracking
+	perf := stats.New()
+
 	// Determine the path to scan
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
 
-	// Find all markdown files
+	// Phase 1: Scan for files
+	perf.StartScan()
 	files, err := scanner.FindMarkdownFiles(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
 	}
+	perf.EndScan(len(files))
 
 	fmt.Printf("Found %d markdown file(s)\n", len(files))
 
-	// Extract all URLs from the files
+	// Phase 2: Parse links
+	perf.StartParse()
 	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
@@ -112,39 +125,52 @@ func runFix(_ *cobra.Command, args []string) {
 	}
 
 	if len(parserLinks) == 0 {
+		perf.EndParse(0, 0, 0, 0)
 		fmt.Println("No links found.")
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
-	// Load and create filter
-	urlFilter, err := createFixFilter()
+	// Load and create filter using shared helper
+	urlFilter, err := CreateFilter(FilterOptions{
+		Domains:  fixIgnoreDomains,
+		Patterns: fixIgnorePatterns,
+		Regex:    fixIgnoreRegex,
+		NoConfig: fixNoConfig,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Convert parser.Link to checker.Link, applying filter
-	links := make([]checker.Link, 0, len(parserLinks))
-	for _, pl := range parserLinks {
-		if urlFilter != nil && urlFilter.ShouldIgnore(pl.URL, pl.FilePath, pl.Line) {
-			continue
-		}
-		links = append(links, checker.Link{
-			URL:      pl.URL,
-			FilePath: pl.FilePath,
-			Line:     pl.Line,
-			Text:     pl.Text,
-		})
+	links := FilterParserLinks(parserLinks, urlFilter)
+
+	ignoredCount := 0
+	if urlFilter != nil {
+		ignoredCount = urlFilter.IgnoredCount()
 	}
+
+	// Count unique URLs using shared helper
+	uniqueURLs := CountUniqueURLs(links)
+	duplicates := len(links) - uniqueURLs
+
+	perf.EndParse(len(parserLinks), uniqueURLs, duplicates, ignoredCount)
 
 	if len(links) == 0 {
 		fmt.Println("All links were ignored by filter rules.")
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
-	// Count unique URLs
-	uniqueURLs := countFixUniqueURLs(links)
 	fmt.Printf("Checking %d unique URL(s) for redirects...\n", uniqueURLs)
+
+	// Phase 3: Check URLs
+	perf.StartCheck()
 
 	// Create checker and check all links
 	opts := checker.DefaultOptions().
@@ -155,6 +181,8 @@ func runFix(_ *cobra.Command, args []string) {
 	c := checker.New(opts)
 	results := c.CheckAll(links)
 
+	perf.EndCheck()
+
 	// Create fixer and find fixable items
 	f := fixer.New()
 	f.SetParserLinks(parserLinks)
@@ -163,6 +191,9 @@ func runFix(_ *cobra.Command, args []string) {
 	if len(changes) == 0 {
 		fmt.Println("\nNo fixable redirects found.")
 		printFixSummary(results)
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
@@ -173,17 +204,26 @@ func runFix(_ *cobra.Command, args []string) {
 	// Handle dry-run mode
 	if fixDryRun {
 		fmt.Println("Dry-run mode: no files were modified.")
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
 	// Handle automatic mode
 	if fixYes {
 		applyAllFixes(f, changes)
+		if fixShowStats {
+			fmt.Print(perf.String())
+		}
 		return
 	}
 
 	// Interactive mode
 	runInteractiveFix(f, changes)
+	if fixShowStats {
+		fmt.Print(perf.String())
+	}
 }
 
 // applyAllFixes applies all fixes without prompting.
@@ -192,7 +232,7 @@ func applyAllFixes(f *fixer.Fixer, changes []fixer.FileChanges) {
 	fmt.Println(fixer.DetailedSummary(results))
 }
 
-// runInteractiveFix prompts for each file.
+// runInteractiveFix prompts the user for each file before applying fixes.
 func runInteractiveFix(f *fixer.Fixer, changes []fixer.FileChanges) {
 	reader := bufio.NewReader(os.Stdin)
 	var allResults []fixer.FixResult
@@ -273,7 +313,7 @@ func runInteractiveFix(f *fixer.Fixer, changes []fixer.FileChanges) {
 	printInteractiveResults(allResults)
 }
 
-// printInteractiveHelp shows help for interactive mode.
+// printInteractiveHelp displays help for interactive mode options.
 func printInteractiveHelp() {
 	fmt.Println(`
 Interactive mode options:
@@ -284,7 +324,7 @@ Interactive mode options:
   ?, help - Show this help`)
 }
 
-// printInteractiveResults prints a summary of interactive session.
+// printInteractiveResults displays a summary of the interactive session.
 func printInteractiveResults(results []fixer.FixResult) {
 	applied := 0
 	skipped := 0
@@ -310,7 +350,7 @@ func printInteractiveResults(results []fixer.FixResult) {
 	}
 }
 
-// printFixSummary prints a summary of check results for context.
+// printFixSummary displays a summary of check results for context.
 func printFixSummary(results []checker.Result) {
 	summary := checker.Summarize(results)
 
@@ -330,43 +370,4 @@ func printFixSummary(results []checker.Result) {
 				notFixable)
 		}
 	}
-}
-
-// createFixFilter builds a filter from config file and CLI flags.
-func createFixFilter() (*filter.Filter, error) {
-	var cfg *config.Config
-
-	if !fixNoConfig {
-		var err error
-		cfg, err = config.Load()
-		if err != nil {
-			return nil, fmt.Errorf("loading config: %w", err)
-		}
-	} else {
-		cfg = &config.Config{}
-	}
-
-	// Merge CLI flags
-	cfg.Ignore.Domains = append(cfg.Ignore.Domains, fixIgnoreDomains...)
-	cfg.Ignore.Patterns = append(cfg.Ignore.Patterns, fixIgnorePatterns...)
-	cfg.Ignore.Regex = append(cfg.Ignore.Regex, fixIgnoreRegex...)
-
-	if cfg.IsEmpty() {
-		return nil, nil
-	}
-
-	return filter.New(filter.Config{
-		Domains:       cfg.Ignore.Domains,
-		GlobPatterns:  cfg.Ignore.Patterns,
-		RegexPatterns: cfg.Ignore.Regex,
-	})
-}
-
-// countFixUniqueURLs returns the number of unique URLs.
-func countFixUniqueURLs(links []checker.Link) int {
-	seen := map[string]bool{}
-	for _, l := range links {
-		seen[l.URL] = true
-	}
-	return len(seen)
 }

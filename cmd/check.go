@@ -7,16 +7,16 @@ import (
 	"time"
 
 	"github.com/leonardomso/gone/internal/checker"
-	"github.com/leonardomso/gone/internal/config"
 	"github.com/leonardomso/gone/internal/filter"
 	"github.com/leonardomso/gone/internal/output"
 	"github.com/leonardomso/gone/internal/parser"
 	"github.com/leonardomso/gone/internal/scanner"
+	"github.com/leonardomso/gone/internal/stats"
 
 	"github.com/spf13/cobra"
 )
 
-// Flag variables.
+// Flag variables for the check command.
 var (
 	outputFormat string
 	outputFile   string
@@ -27,6 +27,7 @@ var (
 	showWarnings bool
 	showDead     bool
 	showAll      bool
+	showStats    bool
 
 	// Ignore flags.
 	ignoreDomains  []string
@@ -61,7 +62,8 @@ Examples:
   gone check --output=report.junit.xml  # Write JUnit XML for CI/CD
   gone check --all                   # Show all results including alive
   gone check --dead                  # Show only dead links and errors
-  gone check --concurrency=20        # Use 20 concurrent workers
+  gone check --concurrency=100       # Use 100 concurrent workers
+  gone check --stats                 # Show performance statistics
 
 Note: --format and --output are mutually exclusive.
 
@@ -96,9 +98,16 @@ func init() {
 	checkCmd.Flags().BoolVarP(&showDead, "dead", "d", false, "Show only dead links and errors")
 
 	// Performance options
-	checkCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 10, "Number of concurrent workers")
-	checkCmd.Flags().IntVarP(&timeout, "timeout", "t", 10, "Timeout per request in seconds")
-	checkCmd.Flags().IntVarP(&retries, "retries", "r", 2, "Number of retries for failed requests")
+	checkCmd.Flags().IntVarP(&concurrency, "concurrency", "c", checker.DefaultConcurrency,
+		"Number of concurrent workers")
+	checkCmd.Flags().IntVarP(&timeout, "timeout", "t", int(checker.DefaultTimeout.Seconds()),
+		"Timeout per request in seconds")
+	checkCmd.Flags().IntVarP(&retries, "retries", "r", checker.DefaultMaxRetries,
+		"Number of retries for failed requests")
+
+	// Stats flag
+	checkCmd.Flags().BoolVar(&showStats, "stats", false,
+		"Show detailed performance statistics")
 
 	// Ignore options
 	checkCmd.Flags().StringSliceVar(&ignoreDomains, "ignore-domain", nil,
@@ -113,18 +122,15 @@ func init() {
 		"Skip loading .gonerc.yaml config file")
 }
 
+// runCheck is the main entry point for the check command.
+// It orchestrates the entire link checking workflow.
 func runCheck(_ *cobra.Command, args []string) {
-	// Validate mutually exclusive flags
-	if outputFormat != "" && outputFile != "" {
-		fmt.Fprintf(os.Stderr, "Error: --format and --output are mutually exclusive\n")
-		fmt.Fprintf(os.Stderr, "Use --format for stdout output, or --output for file output\n")
-		os.Exit(1)
-	}
+	// Initialize stats tracking
+	perf := stats.New()
 
-	// Validate format if specified
-	if outputFormat != "" && !output.IsValidFormat(outputFormat) {
-		fmt.Fprintf(os.Stderr, "Error: invalid format %q\n", outputFormat)
-		fmt.Fprintf(os.Stderr, "Valid formats: %s\n", strings.Join(output.ValidFormats(), ", "))
+	// Validate mutually exclusive flags
+	if err := validateCheckFlags(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
@@ -137,18 +143,21 @@ func runCheck(_ *cobra.Command, args []string) {
 	// Determine if we should suppress progress output
 	useStructuredOutput := outputFormat != ""
 
-	// Find all markdown files
+	// Phase 1: Scan for files
+	perf.StartScan()
 	files, err := scanner.FindMarkdownFiles(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
 	}
+	perf.EndScan(len(files))
 
 	if !useStructuredOutput {
 		fmt.Printf("Found %d markdown file(s)\n", len(files))
 	}
 
-	// Extract all URLs from the files
+	// Phase 2: Parse links from files
+	perf.StartParse()
 	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
@@ -156,38 +165,25 @@ func runCheck(_ *cobra.Command, args []string) {
 	}
 
 	if len(parserLinks) == 0 {
-		switch {
-		case useStructuredOutput:
-			handleStructuredOutput(files, nil, checker.Summary{}, nil)
-		case outputFile != "":
-			handleFileOutput(files, nil, checker.Summary{}, nil)
-		default:
-			fmt.Println("No links found.")
-		}
+		perf.EndParse(0, 0, 0, 0)
+		handleEmptyLinksWithStats(files, useStructuredOutput, perf)
 		return
 	}
 
 	// Load and create filter
-	urlFilter, err := createFilter()
+	urlFilter, err := CreateFilter(FilterOptions{
+		Domains:  ignoreDomains,
+		Patterns: ignorePatterns,
+		Regex:    ignoreRegex,
+		NoConfig: noConfig,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Convert parser.Link to checker.Link, applying filter
-	links := make([]checker.Link, 0, len(parserLinks))
-	for _, pl := range parserLinks {
-		// Check if URL should be ignored
-		if urlFilter != nil && urlFilter.ShouldIgnore(pl.URL, pl.FilePath, pl.Line) {
-			continue
-		}
-		links = append(links, checker.Link{
-			URL:      pl.URL,
-			FilePath: pl.FilePath,
-			Line:     pl.Line,
-			Text:     pl.Text,
-		})
-	}
+	links := FilterParserLinks(parserLinks, urlFilter)
 
 	ignoredCount := 0
 	if urlFilter != nil {
@@ -195,8 +191,10 @@ func runCheck(_ *cobra.Command, args []string) {
 	}
 
 	// Count unique URLs for progress display
-	uniqueURLs := countUniqueURLs(links)
+	uniqueURLs := CountUniqueURLs(links)
 	duplicates := len(links) - uniqueURLs
+
+	perf.EndParse(len(parserLinks), uniqueURLs, duplicates, ignoredCount)
 
 	if !useStructuredOutput {
 		printProgressMessage(len(parserLinks), len(links), uniqueURLs, duplicates, ignoredCount)
@@ -204,19 +202,12 @@ func runCheck(_ *cobra.Command, args []string) {
 
 	// Handle case where all links were filtered out
 	if len(links) == 0 {
-		switch {
-		case useStructuredOutput:
-			handleStructuredOutput(files, nil, checker.Summary{}, urlFilter)
-		case outputFile != "":
-			handleFileOutput(files, nil, checker.Summary{}, urlFilter)
-		default:
-			fmt.Println("\nAll links were ignored by filter rules.")
-			if showIgnored && urlFilter != nil {
-				printIgnoredURLs(urlFilter)
-			}
-		}
+		handleAllFilteredWithStats(files, useStructuredOutput, urlFilter, perf)
 		return
 	}
+
+	// Phase 3: Check URLs
+	perf.StartCheck()
 
 	// Create checker with configured options
 	opts := checker.DefaultOptions().
@@ -230,14 +221,19 @@ func runCheck(_ *cobra.Command, args []string) {
 	results := c.CheckAll(links)
 	summary := checker.Summarize(results)
 
+	perf.EndCheck()
+
 	// Handle output
 	switch {
 	case useStructuredOutput:
-		handleStructuredOutput(files, results, summary, urlFilter)
+		handleStructuredOutputWithStats(files, results, summary, urlFilter, perf)
 	case outputFile != "":
-		handleFileOutput(files, results, summary, urlFilter)
+		handleFileOutputWithStats(files, results, summary, urlFilter, perf)
 	default:
 		outputText(results, summary, urlFilter)
+		if showStats {
+			fmt.Print(perf.String())
+		}
 	}
 
 	// Exit with code 1 if dead links or errors found (not for warnings)
@@ -246,11 +242,62 @@ func runCheck(_ *cobra.Command, args []string) {
 	}
 }
 
-// handleStructuredOutput outputs to stdout in the specified format.
-func handleStructuredOutput(
-	files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter,
+// validateCheckFlags checks for invalid flag combinations.
+func validateCheckFlags() error {
+	// Validate mutually exclusive flags
+	if outputFormat != "" && outputFile != "" {
+		return fmt.Errorf("--format and --output are mutually exclusive; " +
+			"use --format for stdout output, or --output for file output")
+	}
+
+	// Validate format if specified
+	if outputFormat != "" && !output.IsValidFormat(outputFormat) {
+		return fmt.Errorf("invalid format %q; valid formats: %s",
+			outputFormat, strings.Join(output.ValidFormats(), ", "))
+	}
+
+	return nil
+}
+
+// handleEmptyLinksWithStats handles the case when no links are found in the files.
+func handleEmptyLinksWithStats(files []string, useStructuredOutput bool, perf *stats.Stats) {
+	switch {
+	case useStructuredOutput:
+		handleStructuredOutputWithStats(files, nil, checker.Summary{}, nil, perf)
+	case outputFile != "":
+		handleFileOutputWithStats(files, nil, checker.Summary{}, nil, perf)
+	default:
+		fmt.Println("No links found.")
+		if showStats {
+			fmt.Print(perf.String())
+		}
+	}
+}
+
+// handleAllFilteredWithStats handles the case when all links were filtered out.
+func handleAllFilteredWithStats(files []string, useStructuredOutput bool, urlFilter *filter.Filter, perf *stats.Stats) {
+	switch {
+	case useStructuredOutput:
+		handleStructuredOutputWithStats(files, nil, checker.Summary{}, urlFilter, perf)
+	case outputFile != "":
+		handleFileOutputWithStats(files, nil, checker.Summary{}, urlFilter, perf)
+	default:
+		fmt.Println("\nAll links were ignored by filter rules.")
+		if showIgnored && urlFilter != nil {
+			printIgnoredURLs(urlFilter)
+		}
+		if showStats {
+			fmt.Print(perf.String())
+		}
+	}
+}
+
+// handleStructuredOutputWithStats outputs to stdout with optional stats.
+func handleStructuredOutputWithStats(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats,
 ) {
-	report := buildReport(files, results, summary, urlFilter)
+	report := buildReportWithStats(files, results, summary, urlFilter, perf)
 
 	data, err := output.FormatReport(report, output.Format(outputFormat))
 	if err != nil {
@@ -261,9 +308,12 @@ func handleStructuredOutput(
 	fmt.Print(string(data))
 }
 
-// handleFileOutput writes the report to a file.
-func handleFileOutput(files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
-	report := buildReport(files, results, summary, urlFilter)
+// handleFileOutputWithStats writes to file with optional stats.
+func handleFileOutputWithStats(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats,
+) {
+	report := buildReportWithStats(files, results, summary, urlFilter, perf)
 
 	if err := output.WriteToFile(report, outputFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
@@ -279,363 +329,23 @@ func handleFileOutput(files []string, results []checker.Result, summary checker.
 		fmt.Printf(" | %d ignored", urlFilter.IgnoredCount())
 	}
 	fmt.Println()
+
+	if showStats {
+		fmt.Print(perf.String())
+	}
 }
 
-// buildReport creates an output.Report from check results.
-func buildReport(
-	files []string, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter,
+// buildReportWithStats creates an output.Report with optional stats.
+func buildReportWithStats(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats,
 ) *output.Report {
-	report := &output.Report{
-		GeneratedAt: time.Now(),
-		Files:       files,
-		TotalLinks:  summary.Total,
-		UniqueURLs:  summary.UniqueURLs,
-		Summary:     summary,
-		Results:     filterResults(results),
-	}
+	report := buildReport(files, results, summary, urlFilter)
 
-	// Add ignored URLs if filter is present and --show-ignored is set
-	if showIgnored && urlFilter != nil {
-		for _, ig := range urlFilter.IgnoredURLs() {
-			report.Ignored = append(report.Ignored, output.IgnoredURL{
-				URL:    ig.URL,
-				File:   ig.File,
-				Line:   ig.Line,
-				Reason: ig.Type,
-				Rule:   ig.Rule,
-			})
-		}
-	}
-
-	// Adjust total links to include ignored
-	if urlFilter != nil {
-		report.TotalLinks += urlFilter.IgnoredCount()
+	// Add stats if requested
+	if showStats && perf != nil {
+		report.Stats = perf.ToJSON()
 	}
 
 	return report
-}
-
-// createFilter builds a filter from config file and CLI flags.
-func createFilter() (*filter.Filter, error) {
-	var cfg *config.Config
-
-	// Load config file unless --no-config is set
-	if !noConfig {
-		var err error
-		cfg, err = config.Load()
-		if err != nil {
-			return nil, fmt.Errorf("loading config: %w", err)
-		}
-	} else {
-		cfg = &config.Config{}
-	}
-
-	// Merge CLI flags (additive)
-	cfg.Ignore.Domains = append(cfg.Ignore.Domains, ignoreDomains...)
-	cfg.Ignore.Patterns = append(cfg.Ignore.Patterns, ignorePatterns...)
-	cfg.Ignore.Regex = append(cfg.Ignore.Regex, ignoreRegex...)
-
-	// If no ignore rules, return nil (no filtering)
-	if cfg.IsEmpty() {
-		return nil, nil
-	}
-
-	// Create filter
-	return filter.New(filter.Config{
-		Domains:       cfg.Ignore.Domains,
-		GlobPatterns:  cfg.Ignore.Patterns,
-		RegexPatterns: cfg.Ignore.Regex,
-	})
-}
-
-// printProgressMessage shows the scanning progress with ignore info.
-func printProgressMessage(total, afterFilter, unique, duplicates, ignored int) {
-	var parts []string
-
-	if duplicates > 0 {
-		parts = append(parts, fmt.Sprintf("%d duplicates", duplicates))
-	}
-	if ignored > 0 {
-		parts = append(parts, fmt.Sprintf("%d ignored", ignored))
-	}
-
-	if len(parts) > 0 {
-		fmt.Printf("Found %d link(s), checking %d unique URLs (%s)...\n",
-			total, unique, strings.Join(parts, ", "))
-	} else {
-		fmt.Printf("Found %d link(s), checking...\n", afterFilter)
-	}
-}
-
-// countUniqueURLs returns the number of unique URLs in the slice.
-func countUniqueURLs(links []checker.Link) int {
-	seen := map[string]bool{}
-	for _, l := range links {
-		seen[l.URL] = true
-	}
-	return len(seen)
-}
-
-// filterResults returns results based on the filter flags.
-func filterResults(results []checker.Result) []checker.Result {
-	// If specific filter is set, use it
-	if showAlive {
-		return checker.FilterAlive(results)
-	}
-	if showWarnings {
-		return checker.FilterWarnings(results)
-	}
-	if showDead {
-		return checker.FilterDead(results)
-	}
-	if showAll {
-		return results
-	}
-
-	// Default: show warnings + dead + duplicates (non-alive)
-	var filtered []checker.Result
-	for _, r := range results {
-		if !r.IsAlive() {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-// outputText prints results as human-readable text.
-func outputText(results []checker.Result, summary checker.Summary, urlFilter *filter.Filter) {
-	ignoredCount := 0
-	if urlFilter != nil {
-		ignoredCount = urlFilter.IgnoredCount()
-	}
-
-	fmt.Println()
-	if ignoredCount > 0 {
-		fmt.Printf("Summary: %d alive | %d warnings | %d dead | %d duplicates | %d ignored\n\n",
-			summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates, ignoredCount)
-	} else {
-		fmt.Printf("Summary: %d alive | %d warnings | %d dead | %d duplicates\n\n",
-			summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
-	}
-
-	filtered := filterResults(results)
-
-	if len(filtered) == 0 {
-		switch {
-		case showAlive && summary.Alive == 0:
-			fmt.Println("No alive links found.")
-		case showWarnings && summary.WarningsCount() == 0:
-			fmt.Println("No warnings found.")
-		case showDead && !summary.HasDeadLinks():
-			fmt.Println("No dead links found.")
-		default:
-			fmt.Println("All links are alive!")
-		}
-
-		// Show ignored URLs if requested
-		if showIgnored && urlFilter != nil {
-			printIgnoredURLs(urlFilter)
-		}
-		return
-	}
-
-	// Group results by status for nicer output
-	if showAll || (!showAlive && !showWarnings && !showDead) {
-		// Show in sections
-		printSection("Warnings", filterWarningsFromSlice(filtered), printWarningResult)
-		printSection("Dead Links", filterDeadFromSlice(filtered), printDeadResult)
-		printSection("Duplicates", filterDuplicatesFromSlice(filtered), printDuplicateResult)
-
-		if showAll {
-			printSection("Alive", filterAliveFromSlice(filtered), printAliveResult)
-		}
-	} else {
-		// Show flat list for specific filter
-		for _, r := range filtered {
-			printResult(r)
-		}
-	}
-
-	// Show ignored URLs if requested
-	if showIgnored && urlFilter != nil {
-		printIgnoredURLs(urlFilter)
-	}
-}
-
-// printIgnoredURLs displays the list of ignored URLs.
-func printIgnoredURLs(urlFilter *filter.Filter) {
-	ignored := urlFilter.IgnoredURLs()
-	if len(ignored) == 0 {
-		return
-	}
-
-	fmt.Printf("\n=== Ignored URLs (%d) ===\n\n", len(ignored))
-	for _, ig := range ignored {
-		fmt.Printf("  [IGNORED] %s\n", ig.URL)
-		fmt.Printf("            File: %s", ig.File)
-		if ig.Line > 0 {
-			fmt.Printf(":%d", ig.Line)
-		}
-		fmt.Println()
-		fmt.Printf("            Reason: %s %q\n\n", ig.Type, ig.Rule)
-	}
-}
-
-func printSection(title string, results []checker.Result, printer func(checker.Result)) {
-	if len(results) == 0 {
-		return
-	}
-	fmt.Printf("=== %s (%d) ===\n\n", title, len(results))
-	for _, r := range results {
-		printer(r)
-	}
-	fmt.Println()
-}
-
-func printResult(r checker.Result) {
-	switch r.Status {
-	case checker.StatusAlive:
-		printAliveResult(r)
-	case checker.StatusRedirect, checker.StatusBlocked:
-		printWarningResult(r)
-	case checker.StatusDead, checker.StatusError:
-		printDeadResult(r)
-	case checker.StatusDuplicate:
-		printDuplicateResult(r)
-	}
-}
-
-func printAliveResult(r checker.Result) {
-	fmt.Printf("  [%d] %s\n", r.StatusCode, r.Link.URL)
-	if text := truncateText(r.Link.Text); text != "" {
-		fmt.Printf("       Text: %q\n", text)
-	}
-	fmt.Printf("       File: %s", r.Link.FilePath)
-	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
-	}
-	fmt.Println()
-	fmt.Println()
-}
-
-func printWarningResult(r checker.Result) {
-	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
-
-	if text := truncateText(r.Link.Text); text != "" {
-		fmt.Printf("       Text: %q\n", text)
-	}
-
-	if r.Status == checker.StatusRedirect && len(r.RedirectChain) > 0 {
-		fmt.Printf("       Chain: %s\n", formatRedirectChain(r))
-		fmt.Printf("       Final: %s\n", r.FinalURL)
-	}
-
-	fmt.Printf("       File: %s", r.Link.FilePath)
-	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
-	}
-	fmt.Println()
-	fmt.Printf("       Note: %s\n\n", r.Status.Description())
-}
-
-func printDeadResult(r checker.Result) {
-	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
-	if text := truncateText(r.Link.Text); text != "" {
-		fmt.Printf("       Text: %q\n", text)
-	}
-	fmt.Printf("       File: %s", r.Link.FilePath)
-	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
-	}
-	fmt.Println()
-
-	if r.Error != "" {
-		fmt.Printf("       Error: %s\n", r.Error)
-	}
-	fmt.Println()
-}
-
-func printDuplicateResult(r checker.Result) {
-	fmt.Printf("  [DUPLICATE] %s\n", r.Link.URL)
-	if text := truncateText(r.Link.Text); text != "" {
-		fmt.Printf("              Text: %q\n", text)
-	}
-	fmt.Printf("              File: %s", r.Link.FilePath)
-	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
-	}
-	fmt.Println()
-
-	if r.DuplicateOf != nil {
-		fmt.Printf("              Same as: %s", r.DuplicateOf.Link.FilePath)
-		if r.DuplicateOf.Link.Line > 0 {
-			fmt.Printf(":%d", r.DuplicateOf.Link.Line)
-		}
-		fmt.Printf(" → Status: %s\n", r.DuplicateOf.Status.Label())
-	}
-	fmt.Println()
-}
-
-func formatRedirectChain(r checker.Result) string {
-	parts := make([]string, 0, len(r.RedirectChain)+1)
-	for _, red := range r.RedirectChain {
-		parts = append(parts, fmt.Sprintf("%d", red.StatusCode))
-	}
-	parts = append(parts, fmt.Sprintf("%d", r.FinalStatus))
-	return strings.Join(parts, " → ")
-}
-
-// truncateText shortens text to 50 characters, adding "..." if truncated.
-// Returns empty string if input is empty or only whitespace.
-func truncateText(text string) string {
-	const maxLen = 50
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	if len(text) <= maxLen {
-		return text
-	}
-	return text[:maxLen-3] + "..."
-}
-
-// Helper filter functions for slices.
-func filterWarningsFromSlice(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
-	for _, r := range results {
-		if r.IsWarning() {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-func filterDeadFromSlice(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
-	for _, r := range results {
-		if r.IsDead() {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-func filterDuplicatesFromSlice(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
-	for _, r := range results {
-		if r.IsDuplicate() {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-func filterAliveFromSlice(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
-	for _, r := range results {
-		if r.IsAlive() {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
 }

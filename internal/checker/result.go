@@ -20,64 +20,61 @@ const (
 	StatusDuplicate
 )
 
-// String returns the string representation of the status.
-func (s LinkStatus) String() string {
-	switch s {
-	case StatusAlive:
-		return "alive"
-	case StatusRedirect:
-		return "redirect"
-	case StatusBlocked:
-		return "blocked"
-	case StatusDead:
-		return "dead"
-	case StatusError:
-		return "error"
-	case StatusDuplicate:
-		return "duplicate"
-	default:
-		return "unknown"
+// Pre-defined strings to avoid allocations in String() methods.
+var (
+	statusStrings = [...]string{
+		StatusAlive:     "alive",
+		StatusRedirect:  "redirect",
+		StatusBlocked:   "blocked",
+		StatusDead:      "dead",
+		StatusError:     "error",
+		StatusDuplicate: "duplicate",
 	}
+
+	statusLabels = [...]string{
+		StatusAlive:     "OK",
+		StatusRedirect:  "REDIRECT",
+		StatusBlocked:   "BLOCKED",
+		StatusDead:      "DEAD",
+		StatusError:     "ERROR",
+		StatusDuplicate: "DUPLICATE",
+	}
+
+	statusDescriptions = [...]string{
+		StatusAlive:     "Link is working (2xx response)",
+		StatusRedirect:  "URL redirected but final destination works. Consider updating the URL.",
+		StatusBlocked:   "Server returned 403 Forbidden. May be blocking automated requests.",
+		StatusDead:      "Link is broken (4xx/5xx response or redirect leads to dead page)",
+		StatusError:     "Network error (DNS failure, timeout, connection refused)",
+		StatusDuplicate: "This URL appears multiple times. See original occurrence for status.",
+	}
+)
+
+// String returns the string representation of the status.
+// Uses pre-defined strings to avoid allocations.
+func (s LinkStatus) String() string {
+	if s >= 0 && int(s) < len(statusStrings) {
+		return statusStrings[s]
+	}
+	return "unknown"
 }
 
 // Label returns a short label for display (e.g., in badges).
+// Uses pre-defined strings to avoid allocations.
 func (s LinkStatus) Label() string {
-	switch s {
-	case StatusAlive:
-		return "OK"
-	case StatusRedirect:
-		return "REDIRECT"
-	case StatusBlocked:
-		return "BLOCKED"
-	case StatusDead:
-		return "DEAD"
-	case StatusError:
-		return "ERROR"
-	case StatusDuplicate:
-		return "DUPLICATE"
-	default:
-		return "???"
+	if s >= 0 && int(s) < len(statusLabels) {
+		return statusLabels[s]
 	}
+	return "???"
 }
 
 // Description returns a human-readable explanation of the status.
+// Uses pre-defined strings to avoid allocations.
 func (s LinkStatus) Description() string {
-	switch s {
-	case StatusAlive:
-		return "Link is working (2xx response)"
-	case StatusRedirect:
-		return "URL redirected but final destination works. Consider updating the URL."
-	case StatusBlocked:
-		return "Server returned 403 Forbidden. May be blocking automated requests."
-	case StatusDead:
-		return "Link is broken (4xx/5xx response or redirect leads to dead page)"
-	case StatusError:
-		return "Network error (DNS failure, timeout, connection refused)"
-	case StatusDuplicate:
-		return "This URL appears multiple times. See original occurrence for status."
-	default:
-		return "Unknown status"
+	if s >= 0 && int(s) < len(statusDescriptions) {
+		return statusDescriptions[s]
 	}
+	return "Unknown status"
 }
 
 // Redirect represents a single hop in a redirect chain.
@@ -91,24 +88,26 @@ type Redirect struct {
 type Link struct {
 	URL      string // The URL to check
 	FilePath string // Source file where the link was found
-	Line     int    // Line number in the source file (0 if unknown)
 	Text     string // Link text (e.g., "Click here") for display purposes
+	Line     int    // Line number in the source file (0 if unknown)
 }
 
 // Result represents the outcome of checking a single link.
 type Result struct {
-	Link       Link       // The original link that was checked
-	StatusCode int        // HTTP status code (0 if request failed)
-	Status     LinkStatus // Computed status category
-	Error      string     // Error message if applicable
-
-	// Redirect info (populated when redirects occurred)
-	RedirectChain []Redirect // Full chain of redirects
-	FinalURL      string     // Final destination URL after following redirects
-	FinalStatus   int        // Status code of final destination
 
 	// Duplicate info (populated when Status == StatusDuplicate)
 	DuplicateOf *Result // Points to primary result if this is a duplicate
+	Link        Link    // The original link that was checked
+	Error       string  // Error message if applicable
+
+	FinalURL string // Final destination URL after following redirects
+
+	// Redirect info (populated when redirects occurred)
+	RedirectChain []Redirect // Full chain of redirects
+	StatusCode    int        // HTTP status code (0 if request failed)
+	Status        LinkStatus // Computed status category
+	FinalStatus   int        // Status code of final destination
+
 }
 
 // IsAlive returns true if the link is considered alive (2xx response).
@@ -156,8 +155,10 @@ func (r Result) StatusDisplay() string {
 }
 
 // FilterByStatus returns results matching the given status.
+// Pre-allocates slice capacity based on expected ratio.
 func FilterByStatus(results []Result, status LinkStatus) []Result {
-	var filtered []Result
+	// Estimate capacity - most filters return ~10-30% of results
+	filtered := make([]Result, 0, len(results)/4)
 	for _, r := range results {
 		if r.Status == status {
 			filtered = append(filtered, r)
@@ -167,8 +168,9 @@ func FilterByStatus(results []Result, status LinkStatus) []Result {
 }
 
 // FilterWarnings returns results with warning status (redirect or blocked).
+// Pre-allocates slice capacity based on expected ratio.
 func FilterWarnings(results []Result) []Result {
-	var warnings []Result
+	warnings := make([]Result, 0, len(results)/4)
 	for _, r := range results {
 		if r.IsWarning() {
 			warnings = append(warnings, r)
@@ -178,8 +180,9 @@ func FilterWarnings(results []Result) []Result {
 }
 
 // FilterDead returns results that are dead or errored.
+// Pre-allocates slice capacity based on expected ratio.
 func FilterDead(results []Result) []Result {
-	var dead []Result
+	dead := make([]Result, 0, len(results)/8)
 	for _, r := range results {
 		if r.IsDead() {
 			dead = append(dead, r)
@@ -189,8 +192,9 @@ func FilterDead(results []Result) []Result {
 }
 
 // FilterAlive returns only the results where the link is alive.
+// Pre-allocates slice capacity - alive is typically the majority.
 func FilterAlive(results []Result) []Result {
-	var alive []Result
+	alive := make([]Result, 0, len(results)*3/4)
 	for _, r := range results {
 		if r.IsAlive() {
 			alive = append(alive, r)
@@ -200,8 +204,9 @@ func FilterAlive(results []Result) []Result {
 }
 
 // FilterDuplicates returns only duplicate results.
+// Pre-allocates slice capacity based on expected ratio.
 func FilterDuplicates(results []Result) []Result {
-	var duplicates []Result
+	duplicates := make([]Result, 0, len(results)/10)
 	for _, r := range results {
 		if r.IsDuplicate() {
 			duplicates = append(duplicates, r)
@@ -223,19 +228,20 @@ type Summary struct {
 }
 
 // Summarize creates a summary from a slice of results.
+// Uses a single pass to count both unique URLs and status categories.
 func Summarize(results []Result) Summary {
 	s := Summary{Total: len(results)}
 
-	// Count unique URLs
-	seen := map[string]bool{}
+	// Pre-allocate map with estimated capacity
+	seen := make(map[string]struct{}, len(results))
+
+	// Single pass: count unique URLs and categorize by status
 	for _, r := range results {
-		if !seen[r.Link.URL] {
-			seen[r.Link.URL] = true
+		if _, exists := seen[r.Link.URL]; !exists {
+			seen[r.Link.URL] = struct{}{}
 			s.UniqueURLs++
 		}
-	}
 
-	for _, r := range results {
 		switch r.Status {
 		case StatusAlive:
 			s.Alive++

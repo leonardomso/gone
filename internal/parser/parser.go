@@ -1,11 +1,15 @@
 // Package parser extracts URLs from markdown content using goldmark.
+// It supports various markdown link formats including inline links, reference links,
+// images, autolinks, and HTML anchor tags. URLs inside code blocks are ignored.
 package parser
 
 import (
 	"bytes"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -50,30 +54,31 @@ func (t LinkType) String() string {
 
 // Link represents a URL found in a file.
 type Link struct {
-	URL      string   // The actual URL
-	FilePath string   // Which file it was found in
-	Line     int      // Line number (1-indexed)
-	Column   int      // Column position (1-indexed)
-	Text     string   // Link text or alt text for images
-	Type     LinkType // Type of link
+	URL      string // The actual URL
+	FilePath string // Which file it was found in
+	Text     string // Link text or alt text for images
 
 	// For reference links.
-	RefName    string // Reference name (e.g., "myref" in [text][myref])
-	RefDefLine int    // Line where [ref]: url is defined (0 if not reference)
+	RefName string   // Reference name (e.g., "myref" in [text][myref])
+	Line    int      // Line number (1-indexed)
+	Column  int      // Column position (1-indexed)
+	Type    LinkType // Type of link
+
+	RefDefLine int // Line where [ref]: url is defined (0 if not reference)
 }
 
 // linkExtractor walks the AST and extracts links.
 type linkExtractor struct {
+
+	// Track reference definitions: name -> (url, line)
+	refDefs  map[string]refDef
+	filePath string
 	links    []Link
 	source   []byte
-	filePath string
 	lines    []int // byte offset for start of each line
 
 	// Track if we're inside a code block
 	inCodeBlock bool
-
-	// Track reference definitions: name -> (url, line)
-	refDefs map[string]refDef
 }
 
 // refDef holds reference definition info.
@@ -84,6 +89,10 @@ type refDef struct {
 
 // htmlLinkRegex matches <a href="..."> tags.
 var htmlLinkRegex = regexp.MustCompile(`<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^<]*)</a>`)
+
+// refDefRegex matches reference-style link definitions: [name]: url
+// Compiled at package level to avoid recompilation on each call.
+var refDefRegex = regexp.MustCompile(`^\s*\[([^\]]+)\]:\s*(\S+)`)
 
 // ExtractLinks reads a file and returns all HTTP/HTTPS links found.
 func ExtractLinks(filePath string) ([]Link, error) {
@@ -118,8 +127,9 @@ func ExtractLinksFromContent(content []byte, filePath string) ([]Link, error) {
 	refDefs := extractRefDefs(content)
 
 	// Create extractor and walk the AST
+	// Pre-allocate links slice - typical markdown files have ~10-30 links
 	extractor := &linkExtractor{
-		links:    []Link{},
+		links:    make([]Link, 0, 32),
 		source:   content,
 		filePath: filePath,
 		lines:    lines,
@@ -345,8 +355,13 @@ func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
 }
 
 // buildLineIndex creates an index of byte offsets for the start of each line.
+// This index enables O(log n) line/column lookups from byte offsets,
+// which is more efficient than scanning from the start for each lookup.
 func buildLineIndex(content []byte) []int {
-	lines := []int{0} // First line starts at offset 0
+	// Estimate lines: assume avg 60 bytes per line, pre-allocate capacity
+	estimatedLines := len(content)/60 + 1
+	lines := make([]int, 1, estimatedLines)
+	lines[0] = 0 // First line starts at offset 0
 
 	for i, b := range content {
 		if b == '\n' {
@@ -357,37 +372,68 @@ func buildLineIndex(content []byte) []int {
 	return lines
 }
 
-// extractRefDefs extracts reference definitions from the content.
-// Format: [refname]: url.
+// extractRefDefs extracts reference-style link definitions from markdown content.
+// These are lines in the format: [refname]: url
+// Reference names are normalized to lowercase for case-insensitive matching.
+// Uses bytes.IndexByte to iterate lines without allocating a slice of all lines.
 func extractRefDefs(content []byte) map[string]refDef {
-	defs := map[string]refDef{}
-	lines := bytes.Split(content, []byte("\n"))
+	defs := make(map[string]refDef, 8) // Pre-allocate for typical case
+	lineNum := 1
+	start := 0
 
-	refDefRegex := regexp.MustCompile(`^\s*\[([^\]]+)\]:\s*(\S+)`)
+	for start < len(content) {
+		// Find end of current line
+		end := bytes.IndexByte(content[start:], '\n')
+		var line []byte
+		if end == -1 {
+			line = content[start:]
+			start = len(content) // Will exit loop
+		} else {
+			line = content[start : start+end]
+			start = start + end + 1
+		}
 
-	for i, line := range lines {
 		match := refDefRegex.FindSubmatch(line)
 		if match != nil {
 			name := strings.ToLower(string(match[1]))
 			url := string(match[2])
 			defs[name] = refDef{
 				url:  url,
-				line: i + 1, // 1-indexed
+				line: lineNum,
 			}
 		}
+		lineNum++
 	}
 
 	return defs
 }
 
 // isHTTPURL checks if a URL is an HTTP or HTTPS URL.
+// Non-HTTP URLs (mailto, tel, file, anchors, etc.) are excluded from link checking.
 func isHTTPURL(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }
 
-// ExtractLinksFromMultipleFiles processes multiple files and returns all links.
+// ExtractLinksFromMultipleFiles processes multiple files concurrently and returns all links.
+// Uses a worker pool bounded by the number of CPU cores for optimal parallelism.
 func ExtractLinksFromMultipleFiles(filePaths []string) ([]Link, error) {
-	var allLinks []Link
+	if len(filePaths) == 0 {
+		return nil, nil
+	}
+
+	// For small number of files, use sequential processing
+	if len(filePaths) <= 2 {
+		return extractLinksSequential(filePaths)
+	}
+
+	return extractLinksParallel(filePaths)
+}
+
+// extractLinksSequential processes files one at a time.
+// Used for small file counts where parallelism overhead isn't worth it.
+func extractLinksSequential(filePaths []string) ([]Link, error) {
+	// Pre-allocate with estimated capacity (avg ~30 links per file)
+	allLinks := make([]Link, 0, len(filePaths)*30)
 
 	for _, path := range filePaths {
 		links, err := ExtractLinks(path)
@@ -398,4 +444,53 @@ func ExtractLinksFromMultipleFiles(filePaths []string) ([]Link, error) {
 	}
 
 	return allLinks, nil
+}
+
+// extractLinksParallel processes files concurrently using a worker pool.
+func extractLinksParallel(filePaths []string) ([]Link, error) {
+	numWorkers := min(runtime.NumCPU(), len(filePaths))
+
+	// Channels for work distribution
+	jobs := make(chan string, len(filePaths))
+	results := make(chan fileResult, len(filePaths))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for range numWorkers {
+		wg.Go(func() {
+			for path := range jobs {
+				links, err := ExtractLinks(path)
+				results <- fileResult{links: links, err: err}
+			}
+		})
+	}
+
+	// Send jobs
+	for _, path := range filePaths {
+		jobs <- path
+	}
+	close(jobs)
+
+	// Wait for workers and close results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results - pre-allocate with estimated capacity
+	allLinks := make([]Link, 0, len(filePaths)*30)
+	for result := range results {
+		if result.err != nil {
+			return nil, result.err
+		}
+		allLinks = append(allLinks, result.links...)
+	}
+
+	return allLinks, nil
+}
+
+// fileResult holds the result of parsing a single file.
+type fileResult struct {
+	links []Link
+	err   error
 }

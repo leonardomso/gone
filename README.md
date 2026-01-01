@@ -57,7 +57,7 @@ Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, che
 go install github.com/leonardomso/gone@latest
 ```
 
-### Homebrew (coming soon)
+### Homebrew
 
 ```bash
 brew install leonardomso/tap/gone
@@ -114,14 +114,15 @@ gone check [path] [flags]
 | `--dead` | `-d` | `false` | Show only dead links and errors |
 | `--warnings` | `-w` | `false` | Show only warnings (redirects, blocked) |
 | `--alive` | — | `false` | Show only alive links |
-| `--concurrency` | `-c` | `10` | Number of concurrent workers |
-| `--timeout` | `-t` | `10` | Timeout per request in seconds |
-| `--retries` | `-r` | `2` | Number of retries for failed requests |
+| `--concurrency` | `-c` | `50` | Number of concurrent workers |
+| `--timeout` | `-t` | `5` | Timeout per request in seconds |
+| `--retries` | `-r` | `1` | Number of retries for failed requests |
 | `--ignore-domain` | — | — | Domains to ignore (comma-separated or repeated) |
 | `--ignore-pattern` | — | — | Glob patterns to ignore |
 | `--ignore-regex` | — | — | Regex patterns to ignore |
 | `--show-ignored` | — | `false` | Show which URLs were ignored |
 | `--no-config` | — | `false` | Skip loading .gonerc.yaml |
+| `--stats` | — | `false` | Show performance statistics |
 
 **Link Status Types:**
 
@@ -198,9 +199,9 @@ gone fix [path] [flags]
 |------|-------|---------|-------------|
 | `--yes` | `-y` | `false` | Apply all fixes without prompting |
 | `--dry-run` | `-n` | `false` | Preview changes without modifying files |
-| `--concurrency` | `-c` | `10` | Number of concurrent workers |
-| `--timeout` | `-t` | `10` | Timeout per request in seconds |
-| `--retries` | `-r` | `2` | Number of retries for failed requests |
+| `--concurrency` | `-c` | `50` | Number of concurrent workers |
+| `--timeout` | `-t` | `5` | Timeout per request in seconds |
+| `--retries` | `-r` | `1` | Number of retries for failed requests |
 | `--ignore-domain` | — | — | Domains to ignore |
 | `--ignore-pattern` | — | — | Glob patterns to ignore |
 | `--ignore-regex` | — | — | Regex patterns to ignore |
@@ -339,7 +340,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.5'
+          go-version: '1.24'
 
       - name: Install gone
         run: go install github.com/leonardomso/gone@latest
@@ -386,11 +387,12 @@ jobs:
 | `-w, --warnings` | check | `false` | Show only warnings |
 | `--alive` | check | `false` | Show only alive links |
 | `--show-ignored` | check | `false` | Show ignored URLs |
+| `--stats` | check | `false` | Show performance statistics |
 | `-y, --yes` | fix | `false` | Apply fixes without prompting |
 | `-n, --dry-run` | fix | `false` | Preview changes only |
-| `-c, --concurrency` | check, fix | `10` | Concurrent workers |
-| `-t, --timeout` | check, fix | `10` | Request timeout (seconds) |
-| `-r, --retries` | check, fix | `2` | Retry attempts |
+| `-c, --concurrency` | check, fix | `50` | Concurrent workers |
+| `-t, --timeout` | check, fix | `5` | Request timeout (seconds) |
+| `-r, --retries` | check, fix | `1` | Retry attempts |
 | `--ignore-domain` | all | — | Domains to ignore |
 | `--ignore-pattern` | all | — | Glob patterns to ignore |
 | `--ignore-regex` | all | — | Regex patterns to ignore |
