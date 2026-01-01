@@ -66,84 +66,101 @@ func (f *Fixer) SetParserLinks(links []parser.Link) {
 // FindFixes analyzes check results and returns fixable items grouped by file.
 // Only redirects with a successful final destination (200) are considered fixable.
 func (f *Fixer) FindFixes(results []checker.Result) []FileChanges {
-	// Map to track fixes by file -> URL -> Fix
 	fileFixMap := map[string]map[string]*Fix{}
-
-	// Build a map of URL -> parser.Link for reference info
-	urlToParserLink := map[string][]parser.Link{}
-	for _, pl := range f.parserLinks {
-		urlToParserLink[pl.URL] = append(urlToParserLink[pl.URL], pl)
-	}
+	urlToParserLink := f.buildURLToLinksMap()
 
 	for _, r := range results {
-		// Only fix redirects where final destination is alive (200)
-		if r.Status != checker.StatusRedirect {
-			continue
-		}
-		if r.FinalStatus != 200 {
-			continue
-		}
-		if r.FinalURL == "" || r.FinalURL == r.Link.URL {
+		if !isFixableRedirect(r) {
 			continue
 		}
 
-		filePath := r.Link.FilePath
-		oldURL := r.Link.URL
-		newURL := r.FinalURL
-
-		// Initialize file map if needed
-		if fileFixMap[filePath] == nil {
-			fileFixMap[filePath] = map[string]*Fix{}
-		}
-
-		// Check if we already have a fix for this URL in this file
-		if existing, ok := fileFixMap[filePath][oldURL]; ok {
-			existing.Occurrences++
-			continue
-		}
-
-		// Determine if this is a reference definition
-		fix := &Fix{
-			FilePath:    filePath,
-			Line:        r.Link.Line,
-			OldURL:      oldURL,
-			NewURL:      newURL,
-			Occurrences: 1,
-			LinkType:    parser.LinkTypeInline,
-		}
-
-		// Check parser links for reference info
-		if pLinks, ok := urlToParserLink[oldURL]; ok {
-			for _, pl := range pLinks {
-				if pl.FilePath == filePath {
-					fix.LinkType = pl.Type
-					if pl.Type == parser.LinkTypeReference && pl.RefDefLine > 0 {
-						fix.IsRefDef = false // This is a usage, not the definition
-						fix.RefName = pl.RefName
-					}
-				}
-			}
-
-			// Find the reference definition if this URL is used as a reference
-			for _, pl := range pLinks {
-				if pl.FilePath != filePath || pl.RefDefLine <= 0 {
-					continue
-				}
-				// This URL has a reference definition in this file
-				// We should fix the definition line, not the usage lines
-				fix.Line = pl.RefDefLine
-				fix.IsRefDef = true
-				fix.RefName = pl.RefName
-				fix.RefUsages = countRefUsages(pLinks, filePath, pl.RefName)
-				break
-			}
-		}
-
-		fileFixMap[filePath][oldURL] = fix
+		f.addOrUpdateFix(fileFixMap, r, urlToParserLink)
 	}
 
-	// Convert map to sorted slice
 	return f.buildFileChanges(fileFixMap)
+}
+
+// buildURLToLinksMap creates a map from URL to parser links for quick lookup.
+func (f *Fixer) buildURLToLinksMap() map[string][]parser.Link {
+	urlToLinks := make(map[string][]parser.Link, len(f.parserLinks))
+	for _, pl := range f.parserLinks {
+		urlToLinks[pl.URL] = append(urlToLinks[pl.URL], pl)
+	}
+	return urlToLinks
+}
+
+// isFixableRedirect checks if a result is a fixable redirect.
+func isFixableRedirect(r checker.Result) bool {
+	return r.Status == checker.StatusRedirect &&
+		r.FinalStatus == 200 &&
+		r.FinalURL != "" &&
+		r.FinalURL != r.Link.URL
+}
+
+// addOrUpdateFix adds a new fix or increments occurrence count for existing fix.
+func (f *Fixer) addOrUpdateFix(
+	fileFixMap map[string]map[string]*Fix,
+	r checker.Result,
+	urlToParserLink map[string][]parser.Link,
+) {
+	filePath := r.Link.FilePath
+	oldURL := r.Link.URL
+
+	if fileFixMap[filePath] == nil {
+		fileFixMap[filePath] = map[string]*Fix{}
+	}
+
+	if existing, ok := fileFixMap[filePath][oldURL]; ok {
+		existing.Occurrences++
+		return
+	}
+
+	fix := f.createFix(r, urlToParserLink)
+	fileFixMap[filePath][oldURL] = fix
+}
+
+// createFix creates a Fix from a checker result.
+func (f *Fixer) createFix(r checker.Result, urlToParserLink map[string][]parser.Link) *Fix {
+	fix := &Fix{
+		FilePath:    r.Link.FilePath,
+		Line:        r.Link.Line,
+		OldURL:      r.Link.URL,
+		NewURL:      r.FinalURL,
+		Occurrences: 1,
+		LinkType:    parser.LinkTypeInline,
+	}
+
+	if pLinks, ok := urlToParserLink[r.Link.URL]; ok {
+		f.applyRefInfo(fix, pLinks)
+	}
+
+	return fix
+}
+
+// applyRefInfo applies reference definition info to a fix.
+func (*Fixer) applyRefInfo(fix *Fix, pLinks []parser.Link) {
+	// First pass: find link type and ref name for this file
+	for _, pl := range pLinks {
+		if pl.FilePath != fix.FilePath {
+			continue
+		}
+		fix.LinkType = pl.Type
+		if pl.Type == parser.LinkTypeReference && pl.RefDefLine > 0 {
+			fix.RefName = pl.RefName
+		}
+	}
+
+	// Second pass: find the reference definition line
+	for _, pl := range pLinks {
+		if pl.FilePath != fix.FilePath || pl.RefDefLine <= 0 {
+			continue
+		}
+		fix.Line = pl.RefDefLine
+		fix.IsRefDef = true
+		fix.RefName = pl.RefName
+		fix.RefUsages = countRefUsages(pLinks, fix.FilePath, pl.RefName)
+		break
+	}
 }
 
 // countRefUsages counts how many times a reference is used in a file.

@@ -11,144 +11,199 @@ import (
 type MarkdownFormatter struct{}
 
 // Format implements Formatter.
-func (*MarkdownFormatter) Format(report *Report) ([]byte, error) {
-	// Pre-grow builder: estimate ~200 bytes per result + ~500 bytes header
+func (m *MarkdownFormatter) Format(report *Report) ([]byte, error) {
 	var b strings.Builder
 	b.Grow(len(report.Results)*200 + 500)
 
-	// Header
-	b.WriteString("# Gone Link Check Report\n\n")
-	b.WriteString(fmt.Sprintf("**Generated:** %s  \n", report.GeneratedAt.Format("2006-01-02 15:04:05")))
-	b.WriteString(fmt.Sprintf("**Files Scanned:** %d  \n", len(report.Files)))
-	b.WriteString(fmt.Sprintf("**Total Links:** %d  \n", report.TotalLinks))
-	b.WriteString(fmt.Sprintf("**Unique URLs:** %d\n\n", report.UniqueURLs))
+	m.writeHeader(&b, report)
+	m.writeSummaryTable(&b, report)
+	m.writeDeadLinksSection(&b, report.Results)
+	m.writeWarningsSection(&b, report.Results)
+	m.writeDuplicatesSection(&b, report.Results)
+	m.writeIgnoredSection(&b, report.Ignored)
 
-	// Summary table
+	return []byte(b.String()), nil
+}
+
+// writeHeader writes the report header section.
+func (*MarkdownFormatter) writeHeader(b *strings.Builder, report *Report) {
+	b.WriteString("# Gone Link Check Report\n\n")
+	fmt.Fprintf(b, "**Generated:** %s  \n", report.GeneratedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(b, "**Files Scanned:** %d  \n", len(report.Files))
+	fmt.Fprintf(b, "**Total Links:** %d  \n", report.TotalLinks)
+	fmt.Fprintf(b, "**Unique URLs:** %d\n\n", report.UniqueURLs)
+}
+
+// writeSummaryTable writes the summary statistics table.
+func (*MarkdownFormatter) writeSummaryTable(b *strings.Builder, report *Report) {
 	b.WriteString("## Summary\n\n")
 	b.WriteString("| Status | Count |\n")
 	b.WriteString("|--------|-------|\n")
-	b.WriteString(fmt.Sprintf("| Alive | %d |\n", report.Summary.Alive))
-	b.WriteString(fmt.Sprintf("| Warnings | %d |\n", report.Summary.WarningsCount()))
-	b.WriteString(fmt.Sprintf("| Dead | %d |\n", report.Summary.Dead+report.Summary.Errors))
-	b.WriteString(fmt.Sprintf("| Duplicates | %d |\n", report.Summary.Duplicates))
+	fmt.Fprintf(b, "| Alive | %d |\n", report.Summary.Alive)
+	fmt.Fprintf(b, "| Warnings | %d |\n", report.Summary.WarningsCount())
+	fmt.Fprintf(b, "| Dead | %d |\n", report.Summary.Dead+report.Summary.Errors)
+	fmt.Fprintf(b, "| Duplicates | %d |\n", report.Summary.Duplicates)
 	if len(report.Ignored) > 0 {
-		b.WriteString(fmt.Sprintf("| Ignored | %d |\n", len(report.Ignored)))
+		fmt.Fprintf(b, "| Ignored | %d |\n", len(report.Ignored))
 	}
 	b.WriteString("\n")
+}
 
-	// Dead Links section
-	deadLinks := filterByStatus(report.Results, checker.StatusDead, checker.StatusError)
-	if len(deadLinks) > 0 {
-		b.WriteString(fmt.Sprintf("## Dead Links (%d)\n\n", len(deadLinks)))
-		b.WriteString("| Status | URL | Text | File | Line |\n")
-		b.WriteString("|--------|-----|------|------|------|\n")
-		for _, r := range deadLinks {
-			status := formatStatusForMarkdown(r)
-			text := escapeMarkdown(truncateText(r.Link.Text, 40))
-			url := escapeMarkdown(truncateText(r.Link.URL, 60))
-			b.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %d |\n",
-				status, url, text, r.Link.FilePath, r.Link.Line))
-		}
-		b.WriteString("\n")
-
-		// Detailed dead links with redirect chains
-		b.WriteString("### Details\n\n")
-		for _, r := range deadLinks {
-			b.WriteString(fmt.Sprintf("#### %s\n\n", escapeMarkdown(r.Link.URL)))
-			if r.Link.Text != "" {
-				b.WriteString(fmt.Sprintf("- **Text:** %q\n", r.Link.Text))
-			}
-			b.WriteString(fmt.Sprintf("- **File:** `%s:%d`\n", r.Link.FilePath, r.Link.Line))
-			b.WriteString(fmt.Sprintf("- **Status:** %s\n", formatStatusForMarkdown(r)))
-
-			if len(r.RedirectChain) > 0 {
-				b.WriteString("- **Redirect Chain:**\n")
-				for i, red := range r.RedirectChain {
-					b.WriteString(fmt.Sprintf("  %d. `%d` → %s\n", i+1, red.StatusCode, red.URL))
-				}
-				b.WriteString(fmt.Sprintf("  Final: `%d` → %s\n", r.FinalStatus, r.FinalURL))
-			}
-
-			if r.Error != "" {
-				b.WriteString(fmt.Sprintf("- **Error:** %s\n", r.Error))
-			}
-			b.WriteString("\n")
-		}
+// writeDeadLinksSection writes the dead links section if any exist.
+func (m *MarkdownFormatter) writeDeadLinksSection(b *strings.Builder, results []checker.Result) {
+	deadLinks := filterByStatus(results, checker.StatusDead, checker.StatusError)
+	if len(deadLinks) == 0 {
+		return
 	}
 
-	// Warnings section
-	warnings := filterByStatus(report.Results, checker.StatusRedirect, checker.StatusBlocked)
-	if len(warnings) > 0 {
-		b.WriteString(fmt.Sprintf("## Warnings (%d)\n\n", len(warnings)))
-		b.WriteString("| Issue | URL | Text | Final URL | File | Line |\n")
-		b.WriteString("|-------|-----|------|-----------|------|------|\n")
-		for _, r := range warnings {
-			issue := r.Status.Label()
-			text := escapeMarkdown(truncateText(r.Link.Text, 30))
-			url := escapeMarkdown(truncateText(r.Link.URL, 50))
-			finalURL := ""
-			if r.Status == checker.StatusRedirect {
-				finalURL = escapeMarkdown(truncateText(r.FinalURL, 50))
-			}
-			b.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %d |\n",
-				issue, url, text, finalURL, r.Link.FilePath, r.Link.Line))
-		}
-		b.WriteString("\n")
+	fmt.Fprintf(b, "## Dead Links (%d)\n\n", len(deadLinks))
+	m.writeDeadLinksTable(b, deadLinks)
+	m.writeDeadLinksDetails(b, deadLinks)
+}
 
-		// Detailed warnings with full redirect chains
-		b.WriteString("### Redirect Details\n\n")
-		redirects := filterByStatus(report.Results, checker.StatusRedirect)
-		for _, r := range redirects {
-			b.WriteString(fmt.Sprintf("- **%s**\n", escapeMarkdown(r.Link.URL)))
-			if r.Link.Text != "" {
-				b.WriteString(fmt.Sprintf("  - Text: %q\n", truncateText(r.Link.Text, 60)))
-			}
-			b.WriteString(fmt.Sprintf("  - File: `%s:%d`\n", r.Link.FilePath, r.Link.Line))
-			b.WriteString("  - Chain: ")
-			chain := make([]string, 0, len(r.RedirectChain)+1)
-			for _, red := range r.RedirectChain {
-				chain = append(chain, fmt.Sprintf("`%d`", red.StatusCode))
-			}
-			chain = append(chain, fmt.Sprintf("`%d`", r.FinalStatus))
-			b.WriteString(strings.Join(chain, " → "))
-			b.WriteString("\n")
-			b.WriteString(fmt.Sprintf("  - Final: %s\n", r.FinalURL))
+// writeDeadLinksTable writes the dead links summary table.
+func (*MarkdownFormatter) writeDeadLinksTable(b *strings.Builder, deadLinks []checker.Result) {
+	b.WriteString("| Status | URL | Text | File | Line |\n")
+	b.WriteString("|--------|-----|------|------|------|\n")
+	for _, r := range deadLinks {
+		status := formatStatusForMarkdown(r)
+		text := escapeMarkdown(truncateText(r.Link.Text, 40))
+		url := escapeMarkdown(truncateText(r.Link.URL, 60))
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %d |\n",
+			status, url, text, r.Link.FilePath, r.Link.Line)
+	}
+	b.WriteString("\n")
+}
+
+// writeDeadLinksDetails writes detailed info for each dead link.
+func (*MarkdownFormatter) writeDeadLinksDetails(b *strings.Builder, deadLinks []checker.Result) {
+	b.WriteString("### Details\n\n")
+	for _, r := range deadLinks {
+		fmt.Fprintf(b, "#### %s\n\n", escapeMarkdown(r.Link.URL))
+		if r.Link.Text != "" {
+			fmt.Fprintf(b, "- **Text:** %q\n", r.Link.Text)
+		}
+		fmt.Fprintf(b, "- **File:** `%s:%d`\n", r.Link.FilePath, r.Link.Line)
+		fmt.Fprintf(b, "- **Status:** %s\n", formatStatusForMarkdown(r))
+		writeRedirectChain(b, r)
+		if r.Error != "" {
+			fmt.Fprintf(b, "- **Error:** %s\n", r.Error)
 		}
 		b.WriteString("\n")
 	}
+}
 
-	// Duplicates section
-	duplicates := filterByStatus(report.Results, checker.StatusDuplicate)
-	if len(duplicates) > 0 {
-		b.WriteString(fmt.Sprintf("## Duplicates (%d)\n\n", len(duplicates)))
-		b.WriteString("| URL | File | Line | Original Location |\n")
-		b.WriteString("|-----|------|------|-------------------|\n")
-		for _, r := range duplicates {
-			url := escapeMarkdown(truncateText(r.Link.URL, 60))
-			origLoc := ""
-			if r.DuplicateOf != nil {
-				origLoc = fmt.Sprintf("%s:%d", r.DuplicateOf.Link.FilePath, r.DuplicateOf.Link.Line)
-			}
-			b.WriteString(fmt.Sprintf("| %s | %s | %d | %s |\n",
-				url, r.Link.FilePath, r.Link.Line, origLoc))
-		}
-		b.WriteString("\n")
+// writeRedirectChain writes the redirect chain for a result if present.
+func writeRedirectChain(b *strings.Builder, r checker.Result) {
+	if len(r.RedirectChain) == 0 {
+		return
+	}
+	b.WriteString("- **Redirect Chain:**\n")
+	for i, red := range r.RedirectChain {
+		fmt.Fprintf(b, "  %d. `%d` → %s\n", i+1, red.StatusCode, red.URL)
+	}
+	fmt.Fprintf(b, "  Final: `%d` → %s\n", r.FinalStatus, r.FinalURL)
+}
+
+// writeWarningsSection writes the warnings section if any exist.
+func (m *MarkdownFormatter) writeWarningsSection(b *strings.Builder, results []checker.Result) {
+	warnings := filterByStatus(results, checker.StatusRedirect, checker.StatusBlocked)
+	if len(warnings) == 0 {
+		return
 	}
 
-	// Ignored section
-	if len(report.Ignored) > 0 {
-		b.WriteString(fmt.Sprintf("## Ignored URLs (%d)\n\n", len(report.Ignored)))
-		b.WriteString("| URL | File | Line | Reason | Rule |\n")
-		b.WriteString("|-----|------|------|--------|------|\n")
-		for _, ig := range report.Ignored {
-			url := escapeMarkdown(truncateText(ig.URL, 60))
-			b.WriteString(fmt.Sprintf("| %s | %s | %d | %s | `%s` |\n",
-				url, ig.File, ig.Line, ig.Reason, ig.Rule))
+	fmt.Fprintf(b, "## Warnings (%d)\n\n", len(warnings))
+	m.writeWarningsTable(b, warnings)
+	m.writeRedirectDetails(b, results)
+}
+
+// writeWarningsTable writes the warnings summary table.
+func (*MarkdownFormatter) writeWarningsTable(b *strings.Builder, warnings []checker.Result) {
+	b.WriteString("| Issue | URL | Text | Final URL | File | Line |\n")
+	b.WriteString("|-------|-----|------|-----------|------|------|\n")
+	for _, r := range warnings {
+		issue := r.Status.Label()
+		text := escapeMarkdown(truncateText(r.Link.Text, 30))
+		url := escapeMarkdown(truncateText(r.Link.URL, 50))
+		finalURL := ""
+		if r.Status == checker.StatusRedirect {
+			finalURL = escapeMarkdown(truncateText(r.FinalURL, 50))
 		}
-		b.WriteString("\n")
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %d |\n",
+			issue, url, text, finalURL, r.Link.FilePath, r.Link.Line)
+	}
+	b.WriteString("\n")
+}
+
+// writeRedirectDetails writes detailed redirect chain info.
+func (*MarkdownFormatter) writeRedirectDetails(b *strings.Builder, results []checker.Result) {
+	redirects := filterByStatus(results, checker.StatusRedirect)
+	if len(redirects) == 0 {
+		return
 	}
 
-	return []byte(b.String()), nil
+	b.WriteString("### Redirect Details\n\n")
+	for _, r := range redirects {
+		fmt.Fprintf(b, "- **%s**\n", escapeMarkdown(r.Link.URL))
+		if r.Link.Text != "" {
+			fmt.Fprintf(b, "  - Text: %q\n", truncateText(r.Link.Text, 60))
+		}
+		fmt.Fprintf(b, "  - File: `%s:%d`\n", r.Link.FilePath, r.Link.Line)
+		b.WriteString("  - Chain: ")
+		b.WriteString(formatChainCodes(r))
+		b.WriteString("\n")
+		fmt.Fprintf(b, "  - Final: %s\n", r.FinalURL)
+	}
+	b.WriteString("\n")
+}
+
+// formatChainCodes formats redirect chain status codes as a string.
+func formatChainCodes(r checker.Result) string {
+	chain := make([]string, 0, len(r.RedirectChain)+1)
+	for _, red := range r.RedirectChain {
+		chain = append(chain, fmt.Sprintf("`%d`", red.StatusCode))
+	}
+	chain = append(chain, fmt.Sprintf("`%d`", r.FinalStatus))
+	return strings.Join(chain, " → ")
+}
+
+// writeDuplicatesSection writes the duplicates section if any exist.
+func (*MarkdownFormatter) writeDuplicatesSection(b *strings.Builder, results []checker.Result) {
+	duplicates := filterByStatus(results, checker.StatusDuplicate)
+	if len(duplicates) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "## Duplicates (%d)\n\n", len(duplicates))
+	b.WriteString("| URL | File | Line | Original Location |\n")
+	b.WriteString("|-----|------|------|-------------------|\n")
+	for _, r := range duplicates {
+		url := escapeMarkdown(truncateText(r.Link.URL, 60))
+		origLoc := ""
+		if r.DuplicateOf != nil {
+			origLoc = fmt.Sprintf("%s:%d", r.DuplicateOf.Link.FilePath, r.DuplicateOf.Link.Line)
+		}
+		fmt.Fprintf(b, "| %s | %s | %d | %s |\n",
+			url, r.Link.FilePath, r.Link.Line, origLoc)
+	}
+	b.WriteString("\n")
+}
+
+// writeIgnoredSection writes the ignored URLs section if any exist.
+func (*MarkdownFormatter) writeIgnoredSection(b *strings.Builder, ignored []IgnoredURL) {
+	if len(ignored) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "## Ignored URLs (%d)\n\n", len(ignored))
+	b.WriteString("| URL | File | Line | Reason | Rule |\n")
+	b.WriteString("|-----|------|------|--------|------|\n")
+	for _, ig := range ignored {
+		url := escapeMarkdown(truncateText(ig.URL, 60))
+		fmt.Fprintf(b, "| %s | %s | %d | %s | `%s` |\n",
+			url, ig.File, ig.Line, ig.Reason, ig.Rule)
+	}
+	b.WriteString("\n")
 }
 
 // formatStatusForMarkdown formats a result status for markdown display.

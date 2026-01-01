@@ -125,72 +125,90 @@ func init() {
 // runCheck is the main entry point for the check command.
 // It orchestrates the entire link checking workflow.
 func runCheck(_ *cobra.Command, args []string) {
-	// Initialize stats tracking
 	perf := stats.New()
+	exitOnError(validateCheckFlags(), "Invalid flags")
 
-	// Validate mutually exclusive flags
-	if err := validateCheckFlags(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
-
-	// Determine the path to scan
-	path := "."
-	if len(args) > 0 {
-		path = args[0]
-	}
-
-	// Determine if we should suppress progress output
+	path := getPathArg(args)
 	useStructuredOutput := outputFormat != ""
 
 	// Phase 1: Scan for files
-	perf.StartScan()
-	files, err := scanner.FindMarkdownFiles(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
+	files := scanFiles(path, perf, useStructuredOutput)
+
+	// Phase 2: Parse links from files
+	links, urlFilter, done := parseAndFilterLinks(files, perf, useStructuredOutput)
+	if done {
+		return
+	}
+
+	// Phase 3: Check URLs
+	results, summary := checkLinks(links, perf)
+
+	// Phase 4: Output results
+	routeOutput(files, results, summary, urlFilter, perf, useStructuredOutput)
+
+	if summary.HasDeadLinks() {
 		os.Exit(1)
 	}
+}
+
+// exitOnError prints an error message and exits if err is not nil.
+func exitOnError(err error, message string) {
+	if err != nil {
+		if message != "" {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", message, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+		}
+		os.Exit(1)
+	}
+}
+
+// getPathArg returns the path argument or "." as default.
+func getPathArg(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return "."
+}
+
+// scanFiles scans for markdown files and returns the list.
+func scanFiles(path string, perf *stats.Stats, useStructuredOutput bool) []string {
+	perf.StartScan()
+	files, err := scanner.FindMarkdownFiles(path)
+	exitOnError(err, "Error scanning directory")
 	perf.EndScan(len(files))
 
 	if !useStructuredOutput {
 		fmt.Printf("Found %d markdown file(s)\n", len(files))
 	}
+	return files
+}
 
-	// Phase 2: Parse links from files
+// parseAndFilterLinks extracts links from files and applies filters.
+// Returns the links, filter, and whether processing should stop (done=true).
+func parseAndFilterLinks(
+	files []string, perf *stats.Stats, useStructuredOutput bool,
+) ([]checker.Link, *filter.Filter, bool) {
 	perf.StartParse()
 	parserLinks, err := parser.ExtractLinksFromMultipleFiles(files)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
-		os.Exit(1)
-	}
+	exitOnError(err, "Error parsing files")
 
 	if len(parserLinks) == 0 {
 		perf.EndParse(0, 0, 0, 0)
 		handleEmptyLinksWithStats(files, useStructuredOutput, perf)
-		return
+		return nil, nil, true
 	}
 
-	// Load and create filter
 	urlFilter, err := CreateFilter(FilterOptions{
 		Domains:  ignoreDomains,
 		Patterns: ignorePatterns,
 		Regex:    ignoreRegex,
 		NoConfig: noConfig,
 	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
-		os.Exit(1)
-	}
+	exitOnError(err, "Error creating filter")
 
-	// Convert parser.Link to checker.Link, applying filter
 	links := FilterParserLinks(parserLinks, urlFilter)
-
-	ignoredCount := 0
-	if urlFilter != nil {
-		ignoredCount = urlFilter.IgnoredCount()
-	}
-
-	// Count unique URLs for progress display
+	ignoredCount := getIgnoredCount(urlFilter)
 	uniqueURLs := CountUniqueURLs(links)
 	duplicates := len(links) - uniqueURLs
 
@@ -200,30 +218,44 @@ func runCheck(_ *cobra.Command, args []string) {
 		printProgressMessage(len(parserLinks), len(links), uniqueURLs, duplicates, ignoredCount)
 	}
 
-	// Handle case where all links were filtered out
 	if len(links) == 0 {
 		handleAllFilteredWithStats(files, useStructuredOutput, urlFilter, perf)
-		return
+		return nil, urlFilter, true
 	}
 
-	// Phase 3: Check URLs
+	return links, urlFilter, false
+}
+
+// getIgnoredCount returns the ignored count from filter, or 0 if filter is nil.
+func getIgnoredCount(urlFilter *filter.Filter) int {
+	if urlFilter != nil {
+		return urlFilter.IgnoredCount()
+	}
+	return 0
+}
+
+// checkLinks checks all links and returns results with summary.
+func checkLinks(links []checker.Link, perf *stats.Stats) ([]checker.Result, checker.Summary) {
 	perf.StartCheck()
 
-	// Create checker with configured options
 	opts := checker.DefaultOptions().
 		WithConcurrency(concurrency).
 		WithTimeout(time.Duration(timeout) * time.Second).
 		WithMaxRetries(retries)
 
 	c := checker.New(opts)
-
-	// Check all links
 	results := c.CheckAll(links)
 	summary := checker.Summarize(results)
 
 	perf.EndCheck()
+	return results, summary
+}
 
-	// Handle output
+// routeOutput handles output based on format flags.
+func routeOutput(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats, useStructuredOutput bool,
+) {
 	switch {
 	case useStructuredOutput:
 		handleStructuredOutputWithStats(files, results, summary, urlFilter, perf)
@@ -234,11 +266,6 @@ func runCheck(_ *cobra.Command, args []string) {
 		if showStats {
 			fmt.Print(perf.String())
 		}
-	}
-
-	// Exit with code 1 if dead links or errors found (not for warnings)
-	if summary.HasDeadLinks() {
-		os.Exit(1)
 	}
 }
 
