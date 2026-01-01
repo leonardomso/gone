@@ -5,12 +5,11 @@ package checker
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -97,8 +96,9 @@ func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
 		defer close(results)
 
 		// Deduplicate: group links by URL
-		urlToLinks := map[string][]Link{}
-		var urlOrder []string // Preserve order for deterministic output
+		// Pre-allocate with estimated capacity (assume ~70% unique URLs)
+		urlToLinks := make(map[string][]Link, len(links)*7/10)
+		urlOrder := make([]string, 0, len(links)*7/10) // Preserve order for deterministic output
 		for _, link := range links {
 			if _, exists := urlToLinks[link.URL]; !exists {
 				urlOrder = append(urlOrder, link.URL)
@@ -113,7 +113,7 @@ func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
 		}
 
 		// Store primary results for duplicates
-		primaryResults := map[string]*Result{}
+		primaryResults := make(map[string]*Result, len(urlOrder))
 		var resultsMu sync.Mutex
 
 		// Channel for primary results from workers
@@ -226,6 +226,7 @@ func (c *Checker) checkWithRetry(ctx context.Context, link Link) Result {
 }
 
 // backoffDelay calculates delay for retry with exponential backoff and jitter.
+// Uses math/rand/v2 which is auto-seeded and sufficient for non-cryptographic jitter.
 func backoffDelay(attempt int) time.Duration {
 	// Base delay: 1s, 2s, 4s, etc.
 	attempt = max(attempt, 1)
@@ -234,13 +235,12 @@ func backoffDelay(attempt int) time.Duration {
 	// Cap at 30 seconds
 	base = min(base, 30*time.Second)
 
-	// Add jitter (0-25% of base) using crypto/rand for security
+	// Add jitter (0-25% of base) - math/rand/v2 is auto-seeded
+	// Using math/rand instead of crypto/rand for performance (jitter doesn't need crypto security)
 	maxJitter := int64(base / 4)
 	if maxJitter > 0 {
-		n, err := rand.Int(rand.Reader, big.NewInt(maxJitter))
-		if err == nil {
-			return base + time.Duration(n.Int64())
-		}
+		//nolint:gosec // jitter doesn't need crypto-grade randomness
+		return base + time.Duration(rand.Int64N(maxJitter))
 	}
 
 	return base
@@ -351,7 +351,8 @@ func (c *Checker) handleBlockedFinal(ctx context.Context, finalURL string, resul
 //
 //nolint:gocritic // Named returns would make this function harder to read
 func (c *Checker) followRedirectChain(ctx context.Context, startURL string) ([]Redirect, string, int, error) {
-	var chain []Redirect
+	// Pre-allocate for typical redirect chain (1-3 hops)
+	chain := make([]Redirect, 0, 4)
 	currentURL := startURL
 
 	for i := 0; i < c.opts.MaxRedirects; i++ {
@@ -416,8 +417,9 @@ func (c *Checker) doRequest(ctx context.Context, method, urlStr string, useBrows
 	}()
 
 	// For GET requests, drain body to allow connection reuse
+	// 64KB is sufficient to keep connections alive without wasting bandwidth
 	if method == http.MethodGet {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024*1024)) // 1MB max
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024)) // 64KB max
 	}
 
 	return resp.StatusCode, nil

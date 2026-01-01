@@ -103,8 +103,9 @@ func FilterParserLinks(parserLinks []parser.Link, urlFilter *filter.Filter) []ch
 // This provides a generic way to filter results for different display modes.
 
 // FilterResultsWarnings returns results with warning status (redirect or blocked).
+// Pre-allocates slice capacity based on expected ratio (~10-30% warnings).
 func FilterResultsWarnings(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
+	filtered := make([]checker.Result, 0, len(results)/4)
 	for _, r := range results {
 		if r.IsWarning() {
 			filtered = append(filtered, r)
@@ -114,8 +115,9 @@ func FilterResultsWarnings(results []checker.Result) []checker.Result {
 }
 
 // FilterResultsDead returns results that are dead or errored.
+// Pre-allocates slice capacity based on expected ratio (~5-15% dead).
 func FilterResultsDead(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
+	filtered := make([]checker.Result, 0, len(results)/8)
 	for _, r := range results {
 		if r.IsDead() {
 			filtered = append(filtered, r)
@@ -125,8 +127,9 @@ func FilterResultsDead(results []checker.Result) []checker.Result {
 }
 
 // FilterResultsDuplicates returns only duplicate results.
+// Pre-allocates slice capacity based on expected ratio (~10% duplicates).
 func FilterResultsDuplicates(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
+	filtered := make([]checker.Result, 0, len(results)/10)
 	for _, r := range results {
 		if r.IsDuplicate() {
 			filtered = append(filtered, r)
@@ -136,8 +139,9 @@ func FilterResultsDuplicates(results []checker.Result) []checker.Result {
 }
 
 // FilterResultsAlive returns only alive results.
+// Pre-allocates slice capacity - alive is typically the majority (~70-80%).
 func FilterResultsAlive(results []checker.Result) []checker.Result {
-	var filtered []checker.Result
+	filtered := make([]checker.Result, 0, len(results)*3/4)
 	for _, r := range results {
 		if r.IsAlive() {
 			filtered = append(filtered, r)

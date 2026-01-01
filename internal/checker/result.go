@@ -228,19 +228,20 @@ type Summary struct {
 }
 
 // Summarize creates a summary from a slice of results.
+// Uses a single pass to count both unique URLs and status categories.
 func Summarize(results []Result) Summary {
 	s := Summary{Total: len(results)}
 
-	// Count unique URLs
-	seen := map[string]bool{}
+	// Pre-allocate map with estimated capacity
+	seen := make(map[string]struct{}, len(results))
+
+	// Single pass: count unique URLs and categorize by status
 	for _, r := range results {
-		if !seen[r.Link.URL] {
-			seen[r.Link.URL] = true
+		if _, exists := seen[r.Link.URL]; !exists {
+			seen[r.Link.URL] = struct{}{}
 			s.UniqueURLs++
 		}
-	}
 
-	for _, r := range results {
 		switch r.Status {
 		case StatusAlive:
 			s.Alive++

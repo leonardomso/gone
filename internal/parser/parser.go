@@ -90,6 +90,10 @@ type refDef struct {
 // htmlLinkRegex matches <a href="..."> tags.
 var htmlLinkRegex = regexp.MustCompile(`<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^<]*)</a>`)
 
+// refDefRegex matches reference-style link definitions: [name]: url
+// Compiled at package level to avoid recompilation on each call.
+var refDefRegex = regexp.MustCompile(`^\s*\[([^\]]+)\]:\s*(\S+)`)
+
 // ExtractLinks reads a file and returns all HTTP/HTTPS links found.
 func ExtractLinks(filePath string) ([]Link, error) {
 	content, err := os.ReadFile(filePath)
@@ -123,8 +127,9 @@ func ExtractLinksFromContent(content []byte, filePath string) ([]Link, error) {
 	refDefs := extractRefDefs(content)
 
 	// Create extractor and walk the AST
+	// Pre-allocate links slice - typical markdown files have ~10-30 links
 	extractor := &linkExtractor{
-		links:    []Link{},
+		links:    make([]Link, 0, 32),
 		source:   content,
 		filePath: filePath,
 		lines:    lines,
@@ -353,7 +358,10 @@ func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
 // This index enables O(log n) line/column lookups from byte offsets,
 // which is more efficient than scanning from the start for each lookup.
 func buildLineIndex(content []byte) []int {
-	lines := []int{0} // First line starts at offset 0
+	// Estimate lines: assume avg 60 bytes per line, pre-allocate capacity
+	estimatedLines := len(content)/60 + 1
+	lines := make([]int, 1, estimatedLines)
+	lines[0] = 0 // First line starts at offset 0
 
 	for i, b := range content {
 		if b == '\n' {
@@ -367,22 +375,34 @@ func buildLineIndex(content []byte) []int {
 // extractRefDefs extracts reference-style link definitions from markdown content.
 // These are lines in the format: [refname]: url
 // Reference names are normalized to lowercase for case-insensitive matching.
+// Uses bytes.IndexByte to iterate lines without allocating a slice of all lines.
 func extractRefDefs(content []byte) map[string]refDef {
-	defs := map[string]refDef{}
-	lines := bytes.Split(content, []byte("\n"))
+	defs := make(map[string]refDef, 8) // Pre-allocate for typical case
+	lineNum := 1
+	start := 0
 
-	refDefRegex := regexp.MustCompile(`^\s*\[([^\]]+)\]:\s*(\S+)`)
+	for start < len(content) {
+		// Find end of current line
+		end := bytes.IndexByte(content[start:], '\n')
+		var line []byte
+		if end == -1 {
+			line = content[start:]
+			start = len(content) // Will exit loop
+		} else {
+			line = content[start : start+end]
+			start = start + end + 1
+		}
 
-	for i, line := range lines {
 		match := refDefRegex.FindSubmatch(line)
 		if match != nil {
 			name := strings.ToLower(string(match[1]))
 			url := string(match[2])
 			defs[name] = refDef{
 				url:  url,
-				line: i + 1, // 1-indexed
+				line: lineNum,
 			}
 		}
+		lineNum++
 	}
 
 	return defs

@@ -12,7 +12,9 @@ type MarkdownFormatter struct{}
 
 // Format implements Formatter.
 func (*MarkdownFormatter) Format(report *Report) ([]byte, error) {
+	// Pre-grow builder: estimate ~200 bytes per result + ~500 bytes header
 	var b strings.Builder
+	b.Grow(len(report.Results)*200 + 500)
 
 	// Header
 	b.WriteString("# Gone Link Check Report\n\n")
