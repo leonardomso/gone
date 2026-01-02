@@ -37,7 +37,14 @@ func (*Parser) Validate(_ []byte) error {
 }
 
 // Parse extracts links from markdown content.
-func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+// Deprecated: Use ValidateAndParse for better performance.
+func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+	return p.ValidateAndParse(filename, content)
+}
+
+// ValidateAndParse validates the content and extracts links in a single pass.
+// For markdown, validation always passes (any text is valid markdown).
+func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	return ExtractLinksFromContent(content, filename)
 }
 
@@ -72,21 +79,23 @@ var htmlLinkRegex = regexp.MustCompile(`<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^
 // Compiled at package level to avoid recompilation on each call.
 var refDefRegex = regexp.MustCompile(`^\s*\[([^\]]+)\]:\s*(\S+)`)
 
+// mdParser is a package-level goldmark parser instance.
+// Goldmark parsers are safe for concurrent use, so we reuse a single instance
+// to avoid the overhead of creating a new parser for each file.
+var mdParser = goldmark.New(
+	goldmark.WithExtensions(
+		extension.Linkify, // Auto-link bare URLs
+	),
+	goldmark.WithParserOptions(
+		gmparser.WithAutoHeadingID(),
+	),
+)
+
 // ExtractLinksFromContent extracts links from markdown content.
 func ExtractLinksFromContent(content []byte, filePath string) ([]parser.Link, error) {
-	// Create goldmark parser with extensions
-	md := goldmark.New(
-		goldmark.WithExtensions(
-			extension.Linkify, // Auto-link bare URLs
-		),
-		goldmark.WithParserOptions(
-			gmparser.WithAutoHeadingID(),
-		),
-	)
-
-	// Parse the markdown into AST
+	// Parse the markdown into AST using the package-level parser
 	reader := text.NewReader(content)
-	doc := md.Parser().Parse(reader)
+	doc := mdParser.Parser().Parse(reader)
 
 	// Build line offset index for position calculation
 	lines := parser.BuildLineIndex(content)
@@ -243,7 +252,7 @@ func (e *linkExtractor) extractHTMLLinks(content []byte) {
 		}
 
 		// Calculate line and column from byte offset
-		line, col := e.offsetToLineCol(match[0])
+		line, col := parser.OffsetToLineCol(e.lines, match[0])
 
 		e.links = append(e.links, parser.Link{
 			URL:      url,
@@ -278,13 +287,13 @@ func (e *linkExtractor) getPosition(n ast.Node) (line, col int) {
 	if n.Type() == ast.TypeInline {
 		// Check if it's a Text node directly
 		if textNode, ok := n.(*ast.Text); ok {
-			return e.offsetToLineCol(textNode.Segment.Start)
+			return parser.OffsetToLineCol(e.lines, textNode.Segment.Start)
 		}
 
 		// Look for text children
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 			if textNode, ok := child.(*ast.Text); ok {
-				return e.offsetToLineCol(textNode.Segment.Start)
+				return parser.OffsetToLineCol(e.lines, textNode.Segment.Start)
 			}
 		}
 
@@ -293,33 +302,12 @@ func (e *linkExtractor) getPosition(n ast.Node) (line, col int) {
 	}
 
 	// For block nodes, try to get position from the node's lines
-	if lines := n.Lines(); lines != nil && lines.Len() > 0 {
-		seg := lines.At(0)
-		return e.offsetToLineCol(seg.Start)
+	if nodeLines := n.Lines(); nodeLines != nil && nodeLines.Len() > 0 {
+		seg := nodeLines.At(0)
+		return parser.OffsetToLineCol(e.lines, seg.Start)
 	}
 
 	return 1, 1 // Default if we can't determine position
-}
-
-// offsetToLineCol converts a byte offset to line and column numbers.
-func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
-	lineNum = 1
-	colNum = 1
-
-	for i, lineStart := range e.lines {
-		if offset < lineStart {
-			// The offset is on the previous line
-			if i > 0 {
-				lineNum = i
-				colNum = offset - e.lines[i-1] + 1
-			}
-			return lineNum, colNum
-		}
-		lineNum = i + 1
-		colNum = offset - lineStart + 1
-	}
-
-	return lineNum, colNum
 }
 
 // extractRefDefs extracts reference-style link definitions from markdown content.

@@ -62,7 +62,14 @@ func (*Parser) Validate(content []byte) error {
 
 // Parse extracts links from XML content.
 // It extracts URLs from known URL attributes and text content.
-func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+// Deprecated: Use ValidateAndParse for better performance.
+func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+	return p.ValidateAndParse(filename, content)
+}
+
+// ValidateAndParse validates the content and extracts links in a single pass.
+// This is more efficient than calling Validate and Parse separately.
+func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
@@ -70,7 +77,7 @@ func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 	// Build line index for position tracking
 	lines := parser.BuildLineIndex(content)
 
-	// Extract links
+	// Extract links (single pass - validates and parses)
 	extractor := &linkExtractor{
 		filePath: filename,
 		content:  content,
@@ -143,7 +150,8 @@ func (e *linkExtractor) extractFromText(text string, offset int64) {
 
 // extractEmbeddedURLs finds URLs embedded in a string value.
 func (e *linkExtractor) extractEmbeddedURLs(s string, _ int64, context string) {
-	if !strings.Contains(s, "http://") && !strings.Contains(s, "https://") {
+	// Quick check: skip if no "http" substring (covers both http:// and https://)
+	if !strings.Contains(s, "http") {
 		return
 	}
 
@@ -185,27 +193,7 @@ func (e *linkExtractor) findURLPosition(url string) (line, col int) {
 		return 1, 1
 	}
 
-	return e.offsetToLineCol(idx)
-}
-
-// offsetToLineCol converts a byte offset to line and column numbers.
-func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
-	lineNum = 1
-	colNum = 1
-
-	for i, lineStart := range e.lines {
-		if offset < lineStart {
-			if i > 0 {
-				lineNum = i
-				colNum = offset - e.lines[i-1] + 1
-			}
-			return lineNum, colNum
-		}
-		lineNum = i + 1
-		colNum = offset - lineStart + 1
-	}
-
-	return lineNum, colNum
+	return parser.OffsetToLineCol(e.lines, idx)
 }
 
 // init registers the XML parser with the default registry.

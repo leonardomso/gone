@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -131,6 +132,31 @@ func BuildLineIndex(content []byte) []int {
 	return lines
 }
 
+// OffsetToLineCol converts a byte offset to 1-indexed line and column numbers
+// using binary search for O(log n) performance.
+// The lines parameter should be created by BuildLineIndex.
+// Exported for use by subpackage parsers.
+func OffsetToLineCol(lines []int, offset int) (lineNum, colNum int) {
+	if len(lines) == 0 || offset < 0 {
+		return 1, 1
+	}
+
+	// Binary search to find the line containing this offset
+	// We want the largest index i where lines[i] <= offset
+	lineIdx := sort.Search(len(lines), func(i int) bool {
+		return lines[i] > offset
+	}) - 1
+
+	if lineIdx < 0 {
+		lineIdx = 0
+	}
+
+	lineNum = lineIdx + 1 // Convert to 1-indexed
+	colNum = offset - lines[lineIdx] + 1
+
+	return lineNum, colNum
+}
+
 // =============================================================================
 // Multi-File Processing Functions
 // =============================================================================
@@ -154,23 +180,14 @@ func ExtractLinksWithRegistry(filePath string, strict bool) ([]Link, error) {
 		return nil, &ParseError{FilePath: filePath, Err: err}
 	}
 
-	// Validate content if strict mode
-	if strict {
-		if err := p.Validate(content); err != nil {
+	// Validate and parse in a single pass for better performance
+	links, err := p.ValidateAndParse(filePath, content)
+	if err != nil {
+		if strict {
 			return nil, &ParseError{FilePath: filePath, Err: err}
 		}
-	} else {
-		// In non-strict mode, validate but only skip on error
-		if err := p.Validate(content); err != nil {
-			// Return empty links instead of error (skip file)
-			return nil, nil
-		}
-	}
-
-	// Parse the file
-	links, err := p.Parse(filePath, content)
-	if err != nil {
-		return nil, &ParseError{FilePath: filePath, Err: err}
+		// In non-strict mode, skip files with errors
+		return nil, nil
 	}
 
 	return links, nil

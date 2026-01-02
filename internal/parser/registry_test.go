@@ -21,6 +21,9 @@ func (*mockParser) Validate(_ []byte) error { return nil }
 func (*mockParser) Parse(_ string, _ []byte) ([]Link, error) {
 	return nil, nil
 }
+func (*mockParser) ValidateAndParse(_ string, _ []byte) ([]Link, error) {
+	return nil, nil
+}
 
 func TestNewRegistry(t *testing.T) {
 	t.Parallel()

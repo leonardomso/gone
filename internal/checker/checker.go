@@ -196,10 +196,21 @@ func (c *Checker) checkWithRetry(ctx context.Context, link Link) Result {
 	for attempt := 0; attempt <= c.opts.MaxRetries; attempt++ {
 		if attempt > 0 {
 			// Exponential backoff with jitter
+			// Using time.NewTimer instead of time.After to prevent memory leak
+			// time.After creates a timer not GC'd until it fires, which leaks if context cancels first
 			delay := backoffDelay(attempt)
+			timer := time.NewTimer(delay)
 			select {
-			case <-time.After(delay):
+			case <-timer.C:
+				// Timer fired normally
 			case <-ctx.Done():
+				// Clean up timer to prevent leak
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 				return Result{
 					Link:   link,
 					Status: StatusError,

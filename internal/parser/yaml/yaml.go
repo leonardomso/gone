@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/leonardomso/gone/internal/parser"
 	"gopkg.in/yaml.v3"
@@ -46,7 +47,14 @@ func (*Parser) Validate(content []byte) error {
 // Parse extracts links from YAML content.
 // It extracts URLs from both string values and mapping keys.
 // Supports multi-document YAML files.
-func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+// Deprecated: Use ValidateAndParse for better performance.
+func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+	return p.ValidateAndParse(filename, content)
+}
+
+// ValidateAndParse validates the content and extracts links in a single pass.
+// This is more efficient than calling Validate and Parse separately.
+func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
@@ -56,7 +64,7 @@ func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 		links:    make([]parser.Link, 0, 32),
 	}
 
-	// Parse all YAML documents in the file
+	// Parse all YAML documents in the file (single pass - validates and parses)
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	for {
 		var node yaml.Node
@@ -126,7 +134,8 @@ func (e *linkExtractor) extractFromNode(node *yaml.Node, path string) {
 	case yaml.SequenceNode:
 		// Sequence (array) nodes
 		for i, item := range node.Content {
-			childPath := fmt.Sprintf("%s[%d]", path, i)
+			// Use string concatenation with strconv.Itoa instead of fmt.Sprintf for performance
+			childPath := path + "[" + strconv.Itoa(i) + "]"
 			e.extractFromNode(item, childPath)
 		}
 

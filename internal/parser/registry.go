@@ -19,11 +19,18 @@ type FileParser interface {
 
 	// Validate checks if the content is valid for this file type.
 	// Returns an error if the content is malformed.
+	// Deprecated: Use ValidateAndParse for better performance.
 	Validate(content []byte) error
 
 	// Parse extracts links from the file content.
 	// Returns a slice of Link structs with URL, file path, line number, etc.
+	// Deprecated: Use ValidateAndParse for better performance.
 	Parse(filename string, content []byte) ([]Link, error)
+
+	// ValidateAndParse validates the content and extracts links in a single pass.
+	// This is more efficient than calling Validate and Parse separately.
+	// Returns an error if the content is malformed.
+	ValidateAndParse(filename string, content []byte) ([]Link, error)
 }
 
 // Registry manages file parsers by extension.

@@ -4,6 +4,7 @@ package toml
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -38,12 +39,19 @@ func (*Parser) Validate(content []byte) error {
 
 // Parse extracts links from TOML content.
 // It extracts URLs from both string values and table/key names.
-func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+// Deprecated: Use ValidateAndParse for better performance.
+func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
+	return p.ValidateAndParse(filename, content)
+}
+
+// ValidateAndParse validates the content and extracts links in a single pass.
+// This is more efficient than calling Validate and Parse separately.
+func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
 
-	// Parse TOML
+	// Parse TOML (single pass - validates and parses)
 	var v map[string]any
 	if _, err := toml.Decode(string(content), &v); err != nil {
 		return nil, fmt.Errorf("invalid TOML: %w", err)
@@ -85,7 +93,8 @@ func (e *linkExtractor) extractFromValue(v any, path string) {
 	case []map[string]any:
 		// Array of tables
 		for i, item := range val {
-			childPath := fmt.Sprintf("%s[%d]", path, i)
+			// Use string concatenation with strconv.Itoa instead of fmt.Sprintf for performance
+			childPath := path + "[" + strconv.Itoa(i) + "]"
 			e.extractFromTable(item, childPath)
 		}
 	}
@@ -93,7 +102,8 @@ func (e *linkExtractor) extractFromValue(v any, path string) {
 
 // extractFromString extracts URLs from a string value.
 func (e *linkExtractor) extractFromString(s, path string) {
-	if !parser.IsHTTPURL(s) && !strings.Contains(s, "http://") && !strings.Contains(s, "https://") {
+	// Quick check: skip if no "http" substring (covers both http:// and https://)
+	if !strings.Contains(s, "http") {
 		return
 	}
 
@@ -150,7 +160,8 @@ func (e *linkExtractor) extractFromTable(table map[string]any, path string) {
 // extractFromArray extracts URLs from an array.
 func (e *linkExtractor) extractFromArray(arr []any, path string) {
 	for i, value := range arr {
-		childPath := fmt.Sprintf("%s[%d]", path, i)
+		// Use string concatenation with strconv.Itoa instead of fmt.Sprintf for performance
+		childPath := path + "[" + strconv.Itoa(i) + "]"
 		e.extractFromValue(value, childPath)
 	}
 }
@@ -163,27 +174,7 @@ func (e *linkExtractor) findURLPosition(url string) (line, col int) {
 		return 1, 1
 	}
 
-	return e.offsetToLineCol(idx)
-}
-
-// offsetToLineCol converts a byte offset to line and column numbers.
-func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
-	lineNum = 1
-	colNum = 1
-
-	for i, lineStart := range e.lines {
-		if offset < lineStart {
-			if i > 0 {
-				lineNum = i
-				colNum = offset - e.lines[i-1] + 1
-			}
-			return lineNum, colNum
-		}
-		lineNum = i + 1
-		colNum = offset - lineStart + 1
-	}
-
-	return lineNum, colNum
+	return parser.OffsetToLineCol(e.lines, idx)
 }
 
 // init registers the TOML parser with the default registry.
