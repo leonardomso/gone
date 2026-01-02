@@ -1,5 +1,5 @@
 // Package xml implements a URL extractor for XML files.
-package xml
+package xml //nolint:revive // package name matches file type being parsed
 
 import (
 	"bytes"
@@ -62,6 +62,7 @@ func (*Parser) Validate(content []byte) error {
 
 // Parse extracts links from XML content.
 // It extracts URLs from known URL attributes and text content.
+//
 // Deprecated: Use ValidateAndParse for better performance.
 func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 	return p.ValidateAndParse(filename, content)

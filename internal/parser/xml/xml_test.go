@@ -1,4 +1,4 @@
-package xml
+package xml //nolint:revive // package name matches file type being parsed
 
 import (
 	"testing"

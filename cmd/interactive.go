@@ -116,7 +116,8 @@ func runInteractive(_ *cobra.Command, args []string) {
 	// Get scan options for include/exclude patterns
 	scanInclude, scanExclude := loadedCfg.GetScanOptions()
 
-	p := tea.NewProgram(ui.New(path, urlFilter, effectiveTypes, effectiveStrict, scanInclude, scanExclude), tea.WithAltScreen())
+	model := ui.New(path, urlFilter, effectiveTypes, effectiveStrict, scanInclude, scanExclude)
+	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running interactive mode: %v\n", err)
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points

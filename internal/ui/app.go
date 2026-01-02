@@ -126,7 +126,10 @@ type Model struct {
 // fileTypes specifies which file types to scan (e.g., ["md", "json"]).
 // strictMode causes parsing to fail on malformed files.
 // scanInclude/scanExclude are optional glob patterns to filter files.
-func New(path string, urlFilter *filter.Filter, fileTypes []string, strictMode bool, scanInclude, scanExclude []string) Model {
+func New(
+	path string, urlFilter *filter.Filter, fileTypes []string,
+	strictMode bool, scanInclude, scanExclude []string,
+) Model {
 	if path == "" {
 		path = "."
 	}

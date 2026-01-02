@@ -37,6 +37,7 @@ func (*Parser) Validate(_ []byte) error {
 }
 
 // Parse extracts links from markdown content.
+//
 // Deprecated: Use ValidateAndParse for better performance.
 func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 	return p.ValidateAndParse(filename, content)

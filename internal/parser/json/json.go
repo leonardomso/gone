@@ -39,6 +39,7 @@ func (*Parser) Validate(content []byte) error {
 
 // Parse extracts links from JSON content.
 // It extracts URLs from both string values and object keys.
+//
 // Deprecated: Use ValidateAndParse for better performance.
 func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 	return p.ValidateAndParse(filename, content)
