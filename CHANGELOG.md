@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4](https://github.com/leonardomso/gone/compare/v0.1.3...v0.1.4) (2026-01-02)
+
+
+### Features
+
+* included new AGENTS.md file and remove old claude file ([219587a](https://github.com/leonardomso/gone/commit/219587aff10200824963776dac297b4f80dde92f))
+
+
+### Bug Fixes
+
+* resolve lint issues and remove unused deprecated functions ([19ba655](https://github.com/leonardomso/gone/commit/19ba6559349e7abaa82dc69cee281e859b5a64e4))
+* resolve lint issues and remove unused deprecated functions ([e0d50f2](https://github.com/leonardomso/gone/commit/e0d50f260e7569cf87601e0808a5edd91eff6ea0))
+
+
+### Code Refactoring
+
+* remove all deprecated code and simplify parser interface ([d5ad068](https://github.com/leonardomso/gone/commit/d5ad068931111b20df0a327a95a7292f0fb44829))
+
 ## [0.1.3](https://github.com/leonardomso/gone/compare/v0.1.2...v0.1.3) (2026-01-02)
 
 
