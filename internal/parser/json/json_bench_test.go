@@ -6,26 +6,14 @@ import (
 	"testing"
 )
 
-// BenchmarkParse measures JSON parsing performance.
-func BenchmarkParse(b *testing.B) {
-	content := createJSONContent(50)
-	p := New()
-
-	b.ResetTimer()
-	for b.Loop() {
-		_, _ = p.Parse("test.json", content)
-	}
-}
-
-// BenchmarkValidateAndParse measures combined validation and parsing.
+// BenchmarkValidateAndParse measures JSON parsing performance.
 func BenchmarkValidateAndParse(b *testing.B) {
 	content := createJSONContent(50)
 	p := New()
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = p.Validate(content)
-		_, _ = p.Parse("test.json", content)
+		_, _ = p.ValidateAndParse("test.json", content)
 	}
 }
 

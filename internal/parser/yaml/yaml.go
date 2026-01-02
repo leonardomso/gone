@@ -25,36 +25,7 @@ func (*Parser) Extensions() []string {
 	return []string{".yaml", ".yml"}
 }
 
-// Validate checks if the content is valid YAML.
-func (*Parser) Validate(content []byte) error {
-	if len(content) == 0 {
-		return nil // Empty file is valid (no links to extract)
-	}
-
-	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	for {
-		var node yaml.Node
-		if err := decoder.Decode(&node); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return fmt.Errorf("invalid YAML: %w", err)
-		}
-	}
-	return nil
-}
-
-// Parse extracts links from YAML content.
-// It extracts URLs from both string values and mapping keys.
-// Supports multi-document YAML files.
-//
-// Deprecated: Use ValidateAndParse for better performance.
-func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
-	return p.ValidateAndParse(filename, content)
-}
-
 // ValidateAndParse validates the content and extracts links in a single pass.
-// This is more efficient than calling Validate and Parse separately.
 func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil

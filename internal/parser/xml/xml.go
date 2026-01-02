@@ -41,35 +41,7 @@ func (*Parser) Extensions() []string {
 	return []string{".xml"}
 }
 
-// Validate checks if the content is valid XML.
-func (*Parser) Validate(content []byte) error {
-	if len(content) == 0 {
-		return nil // Empty file is valid (no links to extract)
-	}
-
-	decoder := xml.NewDecoder(bytes.NewReader(content))
-	for {
-		_, err := decoder.Token()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("invalid XML: %w", err)
-		}
-	}
-	return nil
-}
-
-// Parse extracts links from XML content.
-// It extracts URLs from known URL attributes and text content.
-//
-// Deprecated: Use ValidateAndParse for better performance.
-func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
-	return p.ValidateAndParse(filename, content)
-}
-
 // ValidateAndParse validates the content and extracts links in a single pass.
-// This is more efficient than calling Validate and Parse separately.
 func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil

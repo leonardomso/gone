@@ -18,55 +18,14 @@ func TestYAMLParser_Extensions(t *testing.T) {
 	assert.Contains(t, exts, ".yml")
 }
 
-func TestYAMLParser_Validate(t *testing.T) {
-	t.Parallel()
-
-	p := New()
-
-	t.Run("ValidYAML", func(t *testing.T) {
-		t.Parallel()
-		content := []byte("key: value\n")
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-
-	t.Run("ValidYAMLList", func(t *testing.T) {
-		t.Parallel()
-		content := []byte("- item1\n- item2\n")
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-
-	t.Run("EmptyContent", func(t *testing.T) {
-		t.Parallel()
-		err := p.Validate([]byte{})
-		assert.NoError(t, err)
-	})
-
-	t.Run("InvalidYAML", func(t *testing.T) {
-		t.Parallel()
-		content := []byte("key:\n  - item\n invalid indentation")
-		err := p.Validate(content)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid YAML")
-	})
-
-	t.Run("MultiDocument", func(t *testing.T) {
-		t.Parallel()
-		content := []byte("---\nkey1: value1\n---\nkey2: value2\n")
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-}
-
-func TestYAMLParser_Parse(t *testing.T) {
+func TestYAMLParser_ValidateAndParse(t *testing.T) {
 	t.Parallel()
 	p := New()
 
 	t.Run("SimpleMapping", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("url: https://example.com\n")
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -79,7 +38,7 @@ func TestYAMLParser_Parse(t *testing.T) {
 homepage: https://example.com
 repo: https://github.com/test/repo
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -92,7 +51,7 @@ project:
     homepage: https://example.com
     docs: https://docs.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -104,7 +63,7 @@ urls:
   - https://one.com
   - https://two.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -118,7 +77,7 @@ resources:
   - name: CDN
     url: https://cdn.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -129,7 +88,7 @@ resources:
 https://example.com: Example site
 https://github.com: GitHub
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 
@@ -148,7 +107,7 @@ url: https://doc1.example.com
 ---
 url: https://doc2.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -158,7 +117,7 @@ url: https://doc2.example.com
 		content := []byte(`
 description: Check out https://example.com for more info
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -167,14 +126,14 @@ description: Check out https://example.com for more info
 	t.Run("NoURLs", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("name: test\nvalue: 42\n")
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("EmptyContent", func(t *testing.T) {
 		t.Parallel()
-		links, err := p.Parse("test.yaml", []byte{})
+		links, err := p.ValidateAndParse("test.yaml", []byte{})
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
@@ -186,7 +145,7 @@ http: https://example.com
 ftp: ftp://files.example.com
 mailto: mailto:test@example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -203,7 +162,7 @@ production:
   <<: *defaults
   url: https://prod.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		// Should find both the default URL and the production URL
 		assert.GreaterOrEqual(t, len(links), 2)
@@ -286,7 +245,7 @@ func TestYAMLParser_LineNumbers(t *testing.T) {
 url1: https://line2.example.com
 url2: https://line3.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 2)
 
@@ -301,7 +260,7 @@ url2: https://line3.example.com
   child:
     url: https://line3.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, 3, links[0].Line)
@@ -319,7 +278,7 @@ project:
   links:
     homepage: https://example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		// The path should be in the Text field
@@ -332,7 +291,7 @@ project:
 urls:
   - https://example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		// The path should include array index
@@ -348,7 +307,7 @@ func TestYAMLParser_EdgeCases(t *testing.T) {
 	t.Run("FlowStyleMapping", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`{url: https://example.com, name: test}`)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -357,7 +316,7 @@ func TestYAMLParser_EdgeCases(t *testing.T) {
 	t.Run("FlowStyleSequence", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`urls: [https://one.com, https://two.com]`)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -369,7 +328,7 @@ func TestYAMLParser_EdgeCases(t *testing.T) {
   Visit https://example.com for more info.
   Also check https://docs.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 2)
 	})
@@ -381,7 +340,7 @@ func TestYAMLParser_EdgeCases(t *testing.T) {
   with https://example.com embedded
   in the text content.
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -392,7 +351,7 @@ func TestYAMLParser_EdgeCases(t *testing.T) {
 single_quoted: 'https://example.com'
 double_quoted: "https://double.example.com"
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -403,7 +362,7 @@ double_quoted: "https://double.example.com"
 escaped: "https://example.com/path\"quoted\""
 newline: "https://example.com\nmore text"
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 1)
 	})
@@ -415,7 +374,7 @@ newline: "https://example.com\nmore text"
 中文: https://example.cn
 emoji🎉: https://example.com/party
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 3)
 	})
@@ -428,7 +387,7 @@ nullable: null
 tilde_null: ~
 empty_value:
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -442,7 +401,7 @@ disabled: false
 yes_val: yes
 no_val: no
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -456,7 +415,7 @@ float: 3.14
 hex: 0x1A
 octal: 0o755
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -468,7 +427,7 @@ query: https://example.com/search?q=hello+world&lang=en
 fragment: https://example.com/page#section
 encoded: https://example.com/path%20with%20spaces
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 3)
 	})
@@ -479,7 +438,7 @@ encoded: https://example.com/path%20with%20spaces
 local: https://localhost:8080/api
 custom: https://example.com:3000/path
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -494,7 +453,7 @@ level1:
         level5:
           url: https://deep.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://deep.example.com", links[0].URL)
@@ -515,7 +474,7 @@ map:
   key: value
   link: https://map.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 3)
 	})
@@ -526,7 +485,7 @@ map:
 # This is a comment with https://comment.example.com
 url: https://example.com  # inline comment with https://inline.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		// Only the actual value URL should be found, not URLs in comments
 		assert.Len(t, links, 1)
@@ -540,7 +499,7 @@ url: https://example.com  # inline comment with https://inline.example.com
 url: https://example.com
 ---
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -550,7 +509,7 @@ url: https://example.com
 		// Tab characters in YAML content can cause parsing issues
 		// Using only spaces and newlines
 		content := []byte("   \n  \n")
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
@@ -560,7 +519,7 @@ url: https://example.com
 		content := []byte(`
 explicit_string: !!str https://example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -576,7 +535,7 @@ derived:
   <<: *base
   url: https://derived.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		// Should find both URLs
 		assert.GreaterOrEqual(t, len(links), 2)
@@ -589,7 +548,7 @@ derived:
 : https://example.com
 simple: https://simple.example.com
 `)
-		links, err := p.Parse("test.yaml", content)
+		links, err := p.ValidateAndParse("test.yaml", content)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 1)
 	})

@@ -6,26 +6,14 @@ import (
 	"testing"
 )
 
-// BenchmarkParse measures XML parsing performance.
-func BenchmarkParse(b *testing.B) {
-	content := createXMLContent(50)
-	p := New()
-
-	b.ResetTimer()
-	for b.Loop() {
-		_, _ = p.Parse("test.xml", content)
-	}
-}
-
-// BenchmarkValidateAndParse measures combined validation and parsing.
+// BenchmarkValidateAndParse measures XML parsing performance.
 func BenchmarkValidateAndParse(b *testing.B) {
 	content := createXMLContent(50)
 	p := New()
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = p.Validate(content)
-		_, _ = p.Parse("test.xml", content)
+		_, _ = p.ValidateAndParse("test.xml", content)
 	}
 }
 

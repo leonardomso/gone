@@ -10,21 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ScanFilesCmdWithPath returns a command that scans for markdown files in the given path.
-//
-// Deprecated: Use ScanFilesCmdWithTypes instead.
-func ScanFilesCmdWithPath(path string) tea.Cmd {
-	return ScanFilesCmdWithTypes(path, []string{"md"})
-}
-
-// ScanFilesCmdWithTypes returns a command that scans for files of the given types in the given path.
-func ScanFilesCmdWithTypes(path string, fileTypes []string) tea.Cmd {
-	return func() tea.Msg {
-		files, err := scanner.FindFilesByTypes(path, fileTypes)
-		return FilesFoundMsg{Files: files, Err: err}
-	}
-}
-
 // ScanFilesCmdWithOptions returns a command that scans for files using ScanOptions.
 // This supports include/exclude glob patterns from the config file.
 func ScanFilesCmdWithOptions(path string, fileTypes, include, exclude []string) tea.Cmd {
@@ -38,13 +23,6 @@ func ScanFilesCmdWithOptions(path string, fileTypes, include, exclude []string) 
 		files, err := scanner.FindFilesWithOptions(opts)
 		return FilesFoundMsg{Files: files, Err: err}
 	}
-}
-
-// ExtractLinksCmd extracts links from the given files.
-//
-// Deprecated: Use ExtractLinksCmdWithRegistry instead.
-func ExtractLinksCmd(files []string) tea.Cmd {
-	return ExtractLinksCmdWithRegistry(files, false)
 }
 
 // ExtractLinksCmdWithRegistry extracts links from the given files using the parser registry.

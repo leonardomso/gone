@@ -24,29 +24,7 @@ func (*Parser) Extensions() []string {
 	return []string{".toml"}
 }
 
-// Validate checks if the content is valid TOML.
-func (*Parser) Validate(content []byte) error {
-	if len(content) == 0 {
-		return nil // Empty file is valid (no links to extract)
-	}
-
-	var v any
-	if _, err := toml.Decode(string(content), &v); err != nil {
-		return fmt.Errorf("invalid TOML: %w", err)
-	}
-	return nil
-}
-
-// Parse extracts links from TOML content.
-// It extracts URLs from both string values and table/key names.
-//
-// Deprecated: Use ValidateAndParse for better performance.
-func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
-	return p.ValidateAndParse(filename, content)
-}
-
 // ValidateAndParse validates the content and extracts links in a single pass.
-// This is more efficient than calling Validate and Parse separately.
 func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil

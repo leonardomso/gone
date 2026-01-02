@@ -17,55 +17,14 @@ func TestParser_Extensions(t *testing.T) {
 	assert.Contains(t, exts, ".json")
 }
 
-func TestParser_Validate(t *testing.T) {
-	t.Parallel()
-
-	p := New()
-
-	t.Run("ValidJSON", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`{"key": "value"}`)
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-
-	t.Run("ValidJSONArray", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`["a", "b", "c"]`)
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-
-	t.Run("EmptyContent", func(t *testing.T) {
-		t.Parallel()
-		err := p.Validate([]byte{})
-		assert.NoError(t, err)
-	})
-
-	t.Run("InvalidJSON", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`{"key": }`)
-		err := p.Validate(content)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid JSON")
-	})
-
-	t.Run("TrailingComma", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`{"key": "value",}`)
-		err := p.Validate(content)
-		assert.Error(t, err)
-	})
-}
-
-func TestParser_Parse(t *testing.T) {
+func TestParser_ValidateAndParse(t *testing.T) {
 	t.Parallel()
 	p := New()
 
 	t.Run("SimpleObject", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`{"url": "https://example.com"}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -78,7 +37,7 @@ func TestParser_Parse(t *testing.T) {
 			"homepage": "https://example.com",
 			"repo": "https://github.com/test/repo"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -93,7 +52,7 @@ func TestParser_Parse(t *testing.T) {
 				}
 			}
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -101,7 +60,7 @@ func TestParser_Parse(t *testing.T) {
 	t.Run("Array", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`["https://one.com", "https://two.com"]`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -114,7 +73,7 @@ func TestParser_Parse(t *testing.T) {
 				{"url": "https://cdn.example.com"}
 			]
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -125,7 +84,7 @@ func TestParser_Parse(t *testing.T) {
 			"https://example.com": "Example site",
 			"https://github.com": "GitHub"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 
@@ -142,7 +101,7 @@ func TestParser_Parse(t *testing.T) {
 		content := []byte(`{
 			"description": "Check out https://example.com for more info"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -153,7 +112,7 @@ func TestParser_Parse(t *testing.T) {
 		content := []byte(`{
 			"message": "Visit https://example.com and https://github.com"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -161,14 +120,14 @@ func TestParser_Parse(t *testing.T) {
 	t.Run("NoURLs", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`{"name": "test", "value": 42}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("EmptyContent", func(t *testing.T) {
 		t.Parallel()
-		links, err := p.Parse("test.json", []byte{})
+		links, err := p.ValidateAndParse("test.json", []byte{})
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
@@ -181,7 +140,7 @@ func TestParser_Parse(t *testing.T) {
 			"mailto": "mailto:test@example.com",
 			"file": "file:///path/to/file"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -192,7 +151,7 @@ func TestParser_Parse(t *testing.T) {
 		content := []byte(`{
 			"text": "Visit https://example.com. Or https://github.com, for code"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 
@@ -282,7 +241,7 @@ func TestParser_LineNumbers(t *testing.T) {
 	"url1": "https://line2.example.com",
 	"url2": "https://line3.example.com"
 }`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		require.Len(t, links, 2)
 
@@ -331,7 +290,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"punycode": "https://xn--r8jz45g.jp/path",
 			"emoji_path": "https://example.com/🎉"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 2)
 	})
@@ -339,7 +298,7 @@ func TestParser_EdgeCases(t *testing.T) {
 	t.Run("EscapedSlashesInURL", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`{"url": "https:\/\/example.com\/path"}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		// The JSON decoder handles escape sequences, so this should parse correctly
 		assert.GreaterOrEqual(t, len(links), 1)
@@ -360,7 +319,7 @@ func TestParser_EdgeCases(t *testing.T) {
 				}
 			}
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://deep.example.com", links[0].URL)
@@ -373,7 +332,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"nullable": null,
 			"nested": {"value": null}
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -385,7 +344,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"enabled": true,
 			"disabled": false
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -399,7 +358,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"negative": -100,
 			"scientific": 1.23e10
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -411,7 +370,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"empty_array": [],
 			"empty_object": {}
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -423,7 +382,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"fragment": "https://example.com/page#section",
 			"encoded": "https://example.com/path%20with%20spaces"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 3)
 	})
@@ -434,7 +393,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"local": "https://localhost:8080/api",
 			"custom": "https://example.com:3000/path"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -442,7 +401,7 @@ func TestParser_EdgeCases(t *testing.T) {
 	t.Run("URLWithBasicAuth", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`{"url": "https://user:pass@example.com/path"}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -459,7 +418,7 @@ func TestParser_EdgeCases(t *testing.T) {
 		}
 		content = append(content, []byte(`]}`)...)
 
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 100)
 	})
@@ -473,7 +432,7 @@ func TestParser_EdgeCases(t *testing.T) {
 			"partial": "example.com",
 			"valid3": "https://final.io"
 		}`)
-		links, err := p.Parse("test.json", content)
+		links, err := p.ValidateAndParse("test.json", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 3) // Only http/https URLs
 	})
@@ -481,7 +440,7 @@ func TestParser_EdgeCases(t *testing.T) {
 	t.Run("WhitespaceOnlyContent", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("   \n\t  ")
-		_, err := p.Parse("test.json", content)
+		_, err := p.ValidateAndParse("test.json", content)
 		// Whitespace-only content is invalid JSON
 		assert.Error(t, err)
 	})

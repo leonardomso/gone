@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindMarkdownFiles(t *testing.T) {
+func TestFindFiles(t *testing.T) {
 	t.Parallel()
 
 	t.Run("SingleFile", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/single")
+		files, err := FindFiles("testdata/single", []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 1)
 		assert.Contains(t, files[0], "readme.md")
@@ -23,7 +23,7 @@ func TestFindMarkdownFiles(t *testing.T) {
 
 	t.Run("MultipleFiles", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/multiple")
+		files, err := FindFiles("testdata/multiple", []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 2)
 
@@ -35,7 +35,7 @@ func TestFindMarkdownFiles(t *testing.T) {
 
 	t.Run("NestedDirectories", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/nested")
+		files, err := FindFiles("testdata/nested", []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 2)
 
@@ -50,14 +50,14 @@ func TestFindMarkdownFiles(t *testing.T) {
 
 	t.Run("EmptyDirectory", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/empty")
+		files, err := FindFiles("testdata/empty", []string{".md"})
 		require.NoError(t, err)
 		assert.Empty(t, files)
 	})
 
 	t.Run("SkipsHiddenDirectories", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/hidden")
+		files, err := FindFiles("testdata/hidden", []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 1)
 
@@ -70,7 +70,7 @@ func TestFindMarkdownFiles(t *testing.T) {
 
 	t.Run("MixedCaseExtensions", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/mixed_case")
+		files, err := FindFiles("testdata/mixed_case", []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 3)
 
@@ -85,14 +85,14 @@ func TestFindMarkdownFiles(t *testing.T) {
 
 	t.Run("InvalidPath", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/nonexistent")
+		files, err := FindFiles("testdata/nonexistent", []string{".md"})
 		assert.Error(t, err)
 		assert.Nil(t, files)
 	})
 
 	t.Run("SingleFileAsRoot", func(t *testing.T) {
 		t.Parallel()
-		files, err := FindMarkdownFiles("testdata/single/readme.md")
+		files, err := FindFiles("testdata/single/readme.md", []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 1)
 		assert.Contains(t, files[0], "readme.md")
@@ -106,7 +106,7 @@ func TestFindMarkdownFiles(t *testing.T) {
 		err := os.WriteFile(testFile, []byte("# Test"), 0o644)
 		require.NoError(t, err)
 
-		files, err := FindMarkdownFiles(tmpDir)
+		files, err := FindFiles(tmpDir, []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 1)
 	})
@@ -123,10 +123,24 @@ func TestFindMarkdownFiles(t *testing.T) {
 		err = os.WriteFile(testFile, []byte("# Deep"), 0o644)
 		require.NoError(t, err)
 
-		files, err := FindMarkdownFiles(tmpDir)
+		files, err := FindFiles(tmpDir, []string{".md"})
 		require.NoError(t, err)
 		assert.Len(t, files, 1)
 		assert.Contains(t, files[0], "deep.md")
+	})
+
+	t.Run("EmptyExtensions", func(t *testing.T) {
+		t.Parallel()
+		files, err := FindFiles("testdata/single", nil)
+		require.NoError(t, err)
+		assert.Empty(t, files)
+	})
+
+	t.Run("MultipleExtensions", func(t *testing.T) {
+		t.Parallel()
+		files, err := FindFiles("testdata/multiple", []string{".md", ".txt"})
+		require.NoError(t, err)
+		assert.Len(t, files, 3) // 2 .md + 1 .txt
 	})
 }
 
