@@ -1,0 +1,3 @@
+# Invalid TOML - missing closing quote
+title = "unclosed string
+key = value without quotes

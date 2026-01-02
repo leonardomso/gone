@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <section id="main">
+        <subsection>
+            <link href="https://deep.example.com">Deep Link</link>
+            <nested>
+                <deeper>
+                    <deepest href="https://deepest.example.com" />
+                </deeper>
+            </nested>
+        </subsection>
+    </section>
+    <section id="other">
+        <link href="https://other.example.com">Other</link>
+    </section>
+</root>

@@ -7,6 +7,13 @@ import (
 	"github.com/leonardomso/gone/internal/config"
 	"github.com/leonardomso/gone/internal/filter"
 	"github.com/leonardomso/gone/internal/parser"
+
+	// Import parser subpackages to trigger their init() registration.
+	_ "github.com/leonardomso/gone/internal/parser/json"
+	_ "github.com/leonardomso/gone/internal/parser/markdown"
+	_ "github.com/leonardomso/gone/internal/parser/toml"
+	_ "github.com/leonardomso/gone/internal/parser/xml"
+	_ "github.com/leonardomso/gone/internal/parser/yaml"
 )
 
 // FilterOptions holds the configuration for creating a URL filter.

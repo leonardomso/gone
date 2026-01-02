@@ -1,0 +1,13 @@
+# Valid TOML without any URLs
+title = "My Project"
+version = "1.0.0"
+enabled = true
+
+[author]
+name = "John Doe"
+email = "john@example.com"
+
+[settings]
+debug = false
+timeout = 30
+tags = ["alpha", "beta", "gamma"]

@@ -1,0 +1,17 @@
+# Multi-line strings with URLs
+description = """
+This is a multi-line description.
+Visit https://example.com for more information.
+Also check https://docs.example.com for documentation.
+"""
+
+literal = '''
+This is a literal string with https://literal.example.com
+No escape sequences here.
+'''
+
+# Basic multi-line
+notes = """
+First line
+Second line with https://multiline.example.com
+Third line"""

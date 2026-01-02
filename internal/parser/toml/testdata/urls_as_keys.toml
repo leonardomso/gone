@@ -1,0 +1,10 @@
+# URLs used as keys (less common but valid)
+["https://example.com"]
+description = "Example site"
+
+["https://github.com"]
+description = "GitHub"
+
+[bookmarks]
+"https://docs.example.com" = "Documentation"
+"https://api.example.com" = "API Reference"

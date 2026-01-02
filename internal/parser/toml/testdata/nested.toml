@@ -1,0 +1,18 @@
+# Nested tables with URLs
+[project]
+name = "My Project"
+url = "https://project.example.com"
+
+[project.links]
+homepage = "https://example.com"
+docs = "https://docs.example.com"
+api = "https://api.example.com/v1"
+
+[project.links.social]
+twitter = "https://twitter.com/example"
+github = "https://github.com/example"
+
+[database]
+host = "localhost"
+connection_string = "postgres://localhost:5432/db"
+docs = "https://database.example.com/docs"

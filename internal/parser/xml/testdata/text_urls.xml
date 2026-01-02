@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <description>Visit https://example.com for more information.</description>
+    <note>Check https://docs.example.com and https://api.example.com for details.</note>
+    <mixed>
+        Some text before https://mixed.example.com and after.
+    </mixed>
+</root>

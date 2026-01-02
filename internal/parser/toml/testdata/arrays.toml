@@ -1,0 +1,20 @@
+# Arrays and array of tables
+urls = [
+  "https://one.example.com",
+  "https://two.example.com",
+  "https://three.example.com"
+]
+
+mixed = ["text", "https://mixed.example.com", 123]
+
+[[servers]]
+name = "primary"
+url = "https://primary.example.com"
+
+[[servers]]
+name = "secondary"
+url = "https://secondary.example.com"
+
+[[servers]]
+name = "backup"
+url = "https://backup.example.com"

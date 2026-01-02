@@ -1,0 +1,6 @@
+# Inline tables
+point = { x = 1, y = 2 }
+link = { name = "Example", url = "https://example.com" }
+
+[config]
+endpoints = { api = "https://api.example.com", cdn = "https://cdn.example.com" }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html>
+    <head>
+        <link href="https://styles.example.com/main.css" rel="stylesheet" />
+    </head>
+    <body>
+        <a href="https://link.example.com">Link</a>
+        <img src="https://images.example.com/photo.jpg" alt="Photo" />
+        <script src="https://scripts.example.com/app.js"></script>
+        <form action="https://api.example.com/submit">
+            <button formaction="https://api.example.com/other">Submit</button>
+        </form>
+        <video poster="https://media.example.com/poster.jpg">
+            <source src="https://media.example.com/video.mp4" />
+        </video>
+        <blockquote cite="https://quotes.example.com/source">Quote</blockquote>
+    </body>
+</html>
