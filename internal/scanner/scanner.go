@@ -10,14 +10,6 @@ import (
 	"github.com/gobwas/glob"
 )
 
-// FindMarkdownFiles walks a directory and returns all .md file paths
-// It skips hidden directories (starting with .) like .git.
-//
-// Deprecated: Use FindFiles with extensions parameter instead.
-func FindMarkdownFiles(root string) ([]string, error) {
-	return FindFiles(root, []string{".md"})
-}
-
 // FindFiles walks a directory and returns all files matching the given extensions.
 // Extensions should include the leading dot (e.g., ".md", ".json").
 // It skips hidden directories (starting with .) like .git.

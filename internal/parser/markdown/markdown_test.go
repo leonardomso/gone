@@ -431,24 +431,10 @@ func TestParser_Validate(t *testing.T) {
 	t.Parallel()
 	p := New()
 
-	t.Run("AlwaysValid", func(t *testing.T) {
-		t.Parallel()
-		// Markdown is very permissive
-		assert.NoError(t, p.Validate([]byte("# Valid")))
-		assert.NoError(t, p.Validate([]byte("random text")))
-		assert.NoError(t, p.Validate([]byte{}))
-		assert.NoError(t, p.Validate(nil))
-	})
-}
-
-func TestParser_Parse(t *testing.T) {
-	t.Parallel()
-	p := New()
-
 	t.Run("ParsesLinks", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("[link](http://example.com)")
-		links, err := p.Parse("test.md", content)
+		links, err := p.ValidateAndParse("test.md", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "http://example.com", links[0].URL)

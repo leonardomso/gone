@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// BenchmarkParse measures Markdown parsing performance.
-func BenchmarkParse(b *testing.B) {
+// BenchmarkValidateAndParse measures Markdown parsing performance.
+func BenchmarkValidateAndParse(b *testing.B) {
 	content := createMarkdownContent(50)
 	p := New()
 
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = p.Parse("test.md", content)
+		_, _ = p.ValidateAndParse("test.md", content)
 	}
 }
 

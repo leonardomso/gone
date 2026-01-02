@@ -24,28 +24,7 @@ func (*Parser) Extensions() []string {
 	return []string{".json"}
 }
 
-// Validate checks if the content is valid JSON.
-func (*Parser) Validate(content []byte) error {
-	if len(content) == 0 {
-		return nil // Empty file is valid (no links to extract)
-	}
-
-	var v any
-	if err := json.Unmarshal(content, &v); err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
-	}
-	return nil
-}
-
-// Parse extracts links from JSON content.
-// It extracts URLs from both string values and object keys.
-// Deprecated: Use ValidateAndParse for better performance.
-func (p *Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
-	return p.ValidateAndParse(filename, content)
-}
-
 // ValidateAndParse validates the content and extracts links in a single pass.
-// This is more efficient than calling Validate and Parse separately.
 func (*Parser) ValidateAndParse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil

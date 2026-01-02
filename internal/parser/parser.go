@@ -147,9 +147,7 @@ func OffsetToLineCol(lines []int, offset int) (lineNum, colNum int) {
 		return lines[i] > offset
 	}) - 1
 
-	if lineIdx < 0 {
-		lineIdx = 0
-	}
+	lineIdx = max(lineIdx, 0)
 
 	lineNum = lineIdx + 1 // Convert to 1-indexed
 	colNum = offset - lines[lineIdx] + 1

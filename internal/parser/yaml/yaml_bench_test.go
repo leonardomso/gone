@@ -6,26 +6,14 @@ import (
 	"testing"
 )
 
-// BenchmarkParse measures YAML parsing performance.
-func BenchmarkParse(b *testing.B) {
-	content := createYAMLContent(50)
-	p := New()
-
-	b.ResetTimer()
-	for b.Loop() {
-		_, _ = p.Parse("test.yaml", content)
-	}
-}
-
-// BenchmarkValidateAndParse measures combined validation and parsing.
+// BenchmarkValidateAndParse measures YAML parsing performance.
 func BenchmarkValidateAndParse(b *testing.B) {
 	content := createYAMLContent(50)
 	p := New()
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = p.Validate(content)
-		_, _ = p.Parse("test.yaml", content)
+		_, _ = p.ValidateAndParse("test.yaml", content)
 	}
 }
 

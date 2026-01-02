@@ -17,50 +17,14 @@ func TestParser_Extensions(t *testing.T) {
 	assert.Contains(t, exts, ".toml")
 }
 
-func TestParser_Validate(t *testing.T) {
-	t.Parallel()
-
-	p := New()
-
-	t.Run("ValidTOML", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`key = "value"`)
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-
-	t.Run("ValidTOMLTable", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`[section]
-key = "value"
-`)
-		err := p.Validate(content)
-		assert.NoError(t, err)
-	})
-
-	t.Run("EmptyContent", func(t *testing.T) {
-		t.Parallel()
-		err := p.Validate([]byte{})
-		assert.NoError(t, err)
-	})
-
-	t.Run("InvalidTOML", func(t *testing.T) {
-		t.Parallel()
-		content := []byte(`key = "unclosed`)
-		err := p.Validate(content)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid TOML")
-	})
-}
-
-func TestParser_Parse(t *testing.T) {
+func TestParser_ValidateAndParse(t *testing.T) {
 	t.Parallel()
 	p := New()
 
 	t.Run("SimpleKeyValue", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`url = "https://example.com"`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -73,7 +37,7 @@ func TestParser_Parse(t *testing.T) {
 homepage = "https://example.com"
 repo = "https://github.com/test/repo"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -88,7 +52,7 @@ name = "test"
 homepage = "https://example.com"
 docs = "https://docs.example.com"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -96,7 +60,7 @@ docs = "https://docs.example.com"
 	t.Run("Arrays", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`urls = ["https://one.com", "https://two.com"]`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -110,7 +74,7 @@ url = "https://server1.com"
 [[servers]]
 url = "https://server2.com"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -118,7 +82,7 @@ url = "https://server2.com"
 	t.Run("InlineTables", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`link = { name = "Example", url = "https://example.com" }`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -126,7 +90,7 @@ url = "https://server2.com"
 	t.Run("EmbeddedURLsInStrings", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`description = "Check out https://example.com for more info"`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -138,7 +102,7 @@ url = "https://server2.com"
 Visit https://example.com
 and https://docs.example.com
 """`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -146,7 +110,7 @@ and https://docs.example.com
 	t.Run("LiteralStrings", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`path = 'https://literal.example.com'`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -155,14 +119,14 @@ and https://docs.example.com
 		t.Parallel()
 		content := []byte(`name = "test"
 value = 42`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("EmptyContent", func(t *testing.T) {
 		t.Parallel()
-		links, err := p.Parse("test.toml", []byte{})
+		links, err := p.ValidateAndParse("test.toml", []byte{})
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
@@ -175,7 +139,7 @@ ftp = "ftp://files.example.com"
 mailto = "mailto:test@example.com"
 file = "file:///path/to/file"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 		assert.Equal(t, "https://example.com", links[0].URL)
@@ -188,7 +152,7 @@ file = "file:///path/to/file"
 "https://example.com" = "Example site"
 "https://github.com" = "GitHub"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -277,7 +241,7 @@ func TestParser_LineNumbers(t *testing.T) {
 url1 = "https://line2.example.com"
 url2 = "https://line3.example.com"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 2)
 
@@ -296,7 +260,7 @@ func TestParser_EdgeCases(t *testing.T) {
 	t.Run("DottedKeys", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`project.homepage = "https://example.com"`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -307,7 +271,7 @@ func TestParser_EdgeCases(t *testing.T) {
 [level1.level2.level3.level4]
 url = "https://deep.example.com"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		require.Len(t, links, 1)
 		assert.Equal(t, "https://deep.example.com", links[0].URL)
@@ -322,7 +286,7 @@ float = 3.14
 boolean = true
 datetime = 2024-01-01T00:00:00Z
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -334,7 +298,7 @@ query = "https://example.com/search?q=hello+world&lang=en"
 fragment = "https://example.com/page#section"
 encoded = "https://example.com/path%20with%20spaces"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 3)
 	})
@@ -345,7 +309,7 @@ encoded = "https://example.com/path%20with%20spaces"
 local = "https://localhost:8080/api"
 custom = "https://example.com:3000/path"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
@@ -356,7 +320,7 @@ custom = "https://example.com:3000/path"
 # This is a comment with https://comment.example.com
 url = "https://example.com" # inline comment with https://inline.example.com
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		// Only the actual value URL should be found
 		assert.Len(t, links, 1)
@@ -366,7 +330,7 @@ url = "https://example.com" # inline comment with https://inline.example.com
 	t.Run("EscapedCharactersInStrings", func(t *testing.T) {
 		t.Parallel()
 		content := []byte(`url = "https://example.com/path\"quoted\""`)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 1)
 	})
@@ -377,7 +341,7 @@ url = "https://example.com" # inline comment with https://inline.example.com
 japanese = "https://例え.jp"
 emoji = "https://example.com/🎉"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 1)
 	})
@@ -388,7 +352,7 @@ emoji = "https://example.com/🎉"
 empty = ""
 url = "https://example.com"
 `)
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Len(t, links, 1)
 	})
@@ -396,7 +360,7 @@ url = "https://example.com"
 	t.Run("WhitespaceOnlyContent", func(t *testing.T) {
 		t.Parallel()
 		content := []byte("   \n  \n")
-		links, err := p.Parse("test.toml", content)
+		links, err := p.ValidateAndParse("test.toml", content)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
