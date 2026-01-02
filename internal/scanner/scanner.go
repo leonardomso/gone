@@ -77,18 +77,25 @@ func FindFilesByTypes(root string, types []string) ([]string, error) {
 	// Convert type names to extensions
 	extensions := make([]string, len(types))
 	for i, t := range types {
-		// Handle special case for yaml/yml
-		if t == "yaml" {
+		// Handle special cases for types with multiple extensions
+		switch strings.ToLower(t) {
+		case "yaml":
 			// yaml type should match both .yaml and .yml
 			extensions[i] = ".yaml"
-		} else {
+		case "md":
+			// md type should match .md, .mdx, and .markdown
+			extensions[i] = ".md"
+		default:
 			extensions[i] = "." + strings.ToLower(t)
 		}
 	}
 
-	// For yaml type, we need to also include .yml
+	// Add additional extensions for types that have multiple file extensions
 	if slices.Contains(types, "yaml") {
 		extensions = append(extensions, ".yml")
+	}
+	if slices.Contains(types, "md") {
+		extensions = append(extensions, ".mdx", ".markdown")
 	}
 
 	return FindFiles(root, extensions)

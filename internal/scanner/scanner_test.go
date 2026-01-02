@@ -129,3 +129,96 @@ func TestFindMarkdownFiles(t *testing.T) {
 		assert.Contains(t, files[0], "deep.md")
 	})
 }
+
+func TestFindFilesByTypes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("MDTypeIncludesMDXAndMarkdown", func(t *testing.T) {
+		t.Parallel()
+		// Test that "md" type finds .md, .mdx, and .markdown files
+		files, err := FindFilesByTypes("testdata/mdx", []string{"md"})
+		require.NoError(t, err)
+		assert.Len(t, files, 3)
+
+		// Collect extensions found
+		var extensions []string
+		for _, f := range files {
+			extensions = append(extensions, filepath.Ext(f))
+		}
+		sort.Strings(extensions)
+		assert.Equal(t, []string{".markdown", ".md", ".mdx"}, extensions)
+	})
+
+	t.Run("YAMLTypeIncludesYML", func(t *testing.T) {
+		t.Parallel()
+		// Create temp directory with .yaml and .yml files
+		tmpDir := t.TempDir()
+		err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("key: value"), 0o644)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(tmpDir, "other.yml"), []byte("key: value"), 0o644)
+		require.NoError(t, err)
+
+		files, err := FindFilesByTypes(tmpDir, []string{"yaml"})
+		require.NoError(t, err)
+		assert.Len(t, files, 2)
+
+		var extensions []string
+		for _, f := range files {
+			extensions = append(extensions, filepath.Ext(f))
+		}
+		sort.Strings(extensions)
+		assert.Equal(t, []string{".yaml", ".yml"}, extensions)
+	})
+
+	t.Run("MultipleTypes", func(t *testing.T) {
+		t.Parallel()
+		// Create temp directory with various file types
+		tmpDir := t.TempDir()
+		err := os.WriteFile(filepath.Join(tmpDir, "readme.md"), []byte("# Readme"), 0o644)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(tmpDir, "component.mdx"), []byte("# MDX"), 0o644)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte("{}"), 0o644)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(tmpDir, "ignore.txt"), []byte("ignored"), 0o644)
+		require.NoError(t, err)
+
+		files, err := FindFilesByTypes(tmpDir, []string{"md", "json"})
+		require.NoError(t, err)
+		assert.Len(t, files, 3) // readme.md, component.mdx, config.json
+	})
+
+	t.Run("EmptyTypes", func(t *testing.T) {
+		t.Parallel()
+		files, err := FindFilesByTypes("testdata/single", []string{})
+		require.NoError(t, err)
+		assert.Nil(t, files)
+	})
+
+	t.Run("JSONType", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		err := os.WriteFile(filepath.Join(tmpDir, "data.json"), []byte("{}"), 0o644)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(tmpDir, "readme.md"), []byte("# Test"), 0o644)
+		require.NoError(t, err)
+
+		files, err := FindFilesByTypes(tmpDir, []string{"json"})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "data.json")
+	})
+
+	t.Run("CaseInsensitive", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		err := os.WriteFile(filepath.Join(tmpDir, "readme.MD"), []byte("# Test"), 0o644)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(tmpDir, "component.MDX"), []byte("# MDX"), 0o644)
+		require.NoError(t, err)
+
+		files, err := FindFilesByTypes(tmpDir, []string{"md"})
+		require.NoError(t, err)
+		assert.Len(t, files, 2)
+	})
+}

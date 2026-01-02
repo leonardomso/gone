@@ -76,7 +76,7 @@ Examples:
 
 Note: --format and --output are mutually exclusive.
 
-Supported file types: md, json, yaml, toml, xml
+Supported file types: md (includes .mdx, .markdown), json, yaml (includes .yml), toml, xml
 
 Ignore patterns:
   gone check --ignore-domain=localhost,example.com
@@ -104,7 +104,7 @@ func init() {
 
 	// File type options
 	checkCmd.Flags().StringSliceVarP(&fileTypes, "types", "T", []string{"md"},
-		"File types to scan (comma-separated): md, json, yaml, toml, xml")
+		"File types to scan: md (includes .mdx, .markdown), json, yaml, toml, xml")
 	checkCmd.Flags().BoolVar(&strictMode, "strict", false,
 		"Fail on malformed files instead of skipping them")
 
