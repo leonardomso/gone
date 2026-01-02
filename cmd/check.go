@@ -62,6 +62,7 @@ Examples:
   gone check                         # Scan current directory (markdown only)
   gone check ./docs                  # Scan specific directory  
   gone check --types=md,json,yaml    # Scan markdown, JSON, and YAML files
+  gone check --types=toml,xml        # Scan TOML and XML files
   gone check --types=json --strict   # Fail on malformed JSON files
   gone check --format=json           # Output JSON to stdout
   gone check --format=yaml           # Output YAML to stdout
@@ -75,7 +76,7 @@ Examples:
 
 Note: --format and --output are mutually exclusive.
 
-Supported file types: md, json, yaml
+Supported file types: md, json, yaml, toml, xml
 
 Ignore patterns:
   gone check --ignore-domain=localhost,example.com
@@ -103,7 +104,7 @@ func init() {
 
 	// File type options
 	checkCmd.Flags().StringSliceVarP(&fileTypes, "types", "T", []string{"md"},
-		"File types to scan (comma-separated): md, json, yaml")
+		"File types to scan (comma-separated): md, json, yaml, toml, xml")
 	checkCmd.Flags().BoolVar(&strictMode, "strict", false,
 		"Fail on malformed files instead of skipping them")
 

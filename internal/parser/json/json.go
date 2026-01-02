@@ -1,28 +1,30 @@
-package parser
+// Package json implements a URL extractor for JSON files.
+package jsonparser
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/leonardomso/gone/internal/parser"
 )
 
-// JSONParser implements FileParser for JSON files.
-type JSONParser struct{}
+// Parser implements parser.FileParser for JSON files.
+type Parser struct{}
 
-// NewJSONParser creates a new JSON parser.
-func NewJSONParser() *JSONParser {
-	return &JSONParser{}
+// New creates a new JSON parser.
+func New() *Parser {
+	return &Parser{}
 }
 
 // Extensions returns the file extensions this parser handles.
-func (*JSONParser) Extensions() []string {
+func (*Parser) Extensions() []string {
 	return []string{".json"}
 }
 
 // Validate checks if the content is valid JSON.
-func (*JSONParser) Validate(content []byte) error {
+func (*Parser) Validate(content []byte) error {
 	if len(content) == 0 {
 		return nil // Empty file is valid (no links to extract)
 	}
@@ -36,7 +38,7 @@ func (*JSONParser) Validate(content []byte) error {
 
 // Parse extracts links from JSON content.
 // It extracts URLs from both string values and object keys.
-func (*JSONParser) Parse(filename string, content []byte) ([]Link, error) {
+func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
@@ -48,14 +50,14 @@ func (*JSONParser) Parse(filename string, content []byte) ([]Link, error) {
 	}
 
 	// Build line index for position tracking
-	lines := buildLineIndex(content)
+	lines := parser.BuildLineIndex(content)
 
 	// Extract links from the parsed JSON
-	extractor := &jsonLinkExtractor{
+	extractor := &linkExtractor{
 		filePath: filename,
 		content:  content,
 		lines:    lines,
-		links:    make([]Link, 0, 32),
+		links:    make([]parser.Link, 0, 32),
 	}
 
 	extractor.extractFromValue(v, "")
@@ -63,19 +65,16 @@ func (*JSONParser) Parse(filename string, content []byte) ([]Link, error) {
 	return extractor.links, nil
 }
 
-// jsonLinkExtractor extracts URLs from JSON values.
-type jsonLinkExtractor struct {
+// linkExtractor extracts URLs from JSON values.
+type linkExtractor struct {
 	filePath string
 	content  []byte
 	lines    []int
-	links    []Link
+	links    []parser.Link
 }
 
-// urlRegex matches HTTP/HTTPS URLs.
-var urlRegex = regexp.MustCompile(`https?://[^\s"'\]\}>,]+`)
-
 // extractFromValue recursively extracts URLs from a JSON value.
-func (e *jsonLinkExtractor) extractFromValue(v any, path string) {
+func (e *linkExtractor) extractFromValue(v any, path string) {
 	switch val := v.(type) {
 	case string:
 		e.extractFromString(val, path)
@@ -87,47 +86,47 @@ func (e *jsonLinkExtractor) extractFromValue(v any, path string) {
 }
 
 // extractFromString extracts URLs from a string value.
-func (e *jsonLinkExtractor) extractFromString(s, path string) {
-	if !isHTTPURL(s) && !strings.Contains(s, "http://") && !strings.Contains(s, "https://") {
+func (e *linkExtractor) extractFromString(s, path string) {
+	if !parser.IsHTTPURL(s) && !strings.Contains(s, "http://") && !strings.Contains(s, "https://") {
 		return
 	}
 
 	// Find all URLs in the string
-	matches := urlRegex.FindAllString(s, -1)
+	matches := parser.URLRegex.FindAllString(s, -1)
 	for _, url := range matches {
 		// Clean up trailing punctuation
-		url = cleanURLTrailing(url)
-		if !isHTTPURL(url) {
+		url = parser.CleanURLTrailing(url)
+		if !parser.IsHTTPURL(url) {
 			continue
 		}
 
 		// Find the position of this URL in the original content
 		line, col := e.findURLPosition(url)
 
-		e.links = append(e.links, Link{
+		e.links = append(e.links, parser.Link{
 			URL:      url,
 			FilePath: e.filePath,
 			Line:     line,
 			Column:   col,
 			Text:     path,
-			Type:     LinkTypeAutolink,
+			Type:     parser.LinkTypeAutolink,
 		})
 	}
 }
 
 // extractFromObject extracts URLs from an object (map).
-func (e *jsonLinkExtractor) extractFromObject(obj map[string]any, path string) {
+func (e *linkExtractor) extractFromObject(obj map[string]any, path string) {
 	for key, value := range obj {
 		// Check if the key itself is a URL
-		if isHTTPURL(key) {
+		if parser.IsHTTPURL(key) {
 			line, col := e.findURLPosition(key)
-			e.links = append(e.links, Link{
+			e.links = append(e.links, parser.Link{
 				URL:      key,
 				FilePath: e.filePath,
 				Line:     line,
 				Column:   col,
 				Text:     path + ".<key>",
-				Type:     LinkTypeAutolink,
+				Type:     parser.LinkTypeAutolink,
 			})
 		}
 
@@ -143,7 +142,7 @@ func (e *jsonLinkExtractor) extractFromObject(obj map[string]any, path string) {
 }
 
 // extractFromArray extracts URLs from an array.
-func (e *jsonLinkExtractor) extractFromArray(arr []any, path string) {
+func (e *linkExtractor) extractFromArray(arr []any, path string) {
 	for i, value := range arr {
 		childPath := fmt.Sprintf("%s[%d]", path, i)
 		e.extractFromValue(value, childPath)
@@ -152,7 +151,7 @@ func (e *jsonLinkExtractor) extractFromArray(arr []any, path string) {
 
 // findURLPosition finds the line and column of a URL in the content.
 // This is a best-effort approach since JSON doesn't preserve positions after parsing.
-func (e *jsonLinkExtractor) findURLPosition(url string) (line, col int) {
+func (e *linkExtractor) findURLPosition(url string) (line, col int) {
 	idx := bytes.Index(e.content, []byte(url))
 	if idx == -1 {
 		return 1, 1
@@ -162,7 +161,7 @@ func (e *jsonLinkExtractor) findURLPosition(url string) (line, col int) {
 }
 
 // offsetToLineCol converts a byte offset to line and column numbers.
-func (e *jsonLinkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
+func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
 	lineNum = 1
 	colNum = 1
 
@@ -181,22 +180,7 @@ func (e *jsonLinkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
 	return lineNum, colNum
 }
 
-// cleanURLTrailing removes trailing punctuation from URLs.
-func cleanURLTrailing(url string) string {
-	// Remove trailing punctuation that's likely not part of the URL
-	for url != "" {
-		last := url[len(url)-1]
-		if last == '.' || last == ',' || last == ';' || last == ':' ||
-			last == ')' || last == ']' || last == '}' || last == '"' || last == '\'' {
-			url = url[:len(url)-1]
-		} else {
-			break
-		}
-	}
-	return url
-}
-
 // init registers the JSON parser with the default registry.
 func init() {
-	RegisterParser(NewJSONParser())
+	parser.RegisterParser(New())
 }

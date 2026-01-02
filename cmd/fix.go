@@ -56,12 +56,13 @@ Examples:
   gone fix                      # Interactive mode, scan current directory
   gone fix ./docs               # Interactive mode, scan specific directory
   gone fix --types=md,json      # Scan markdown and JSON files
+  gone fix --types=toml,xml     # Scan TOML and XML files
   gone fix --dry-run            # Preview what would be fixed
   gone fix --yes                # Apply all fixes without prompting
   gone fix --yes --dry-run      # Preview all fixes (no prompts, no changes)
   gone fix --stats              # Show performance statistics
 
-Supported file types: md, json, yaml
+Supported file types: md, json, yaml, toml, xml
 
 Ignore patterns (same as check command):
   gone fix --ignore-domain=localhost
@@ -82,7 +83,7 @@ func init() {
 
 	// File type options
 	fixCmd.Flags().StringSliceVarP(&fixFileTypes, "types", "T", []string{"md"},
-		"File types to scan (comma-separated): md, json, yaml")
+		"File types to scan (comma-separated): md, json, yaml, toml, xml")
 	fixCmd.Flags().BoolVar(&fixStrictMode, "strict", false,
 		"Fail on malformed files instead of skipping them")
 

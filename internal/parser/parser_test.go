@@ -422,21 +422,21 @@ func TestExtractLinks(t *testing.T) {
 
 	t.Run("FromInlineLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/inline_links.md")
+		links, err := ExtractLinks("markdown/testdata/inline_links.md")
 		require.NoError(t, err)
 		assert.Len(t, links, 3)
 	})
 
 	t.Run("FromReferenceLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/reference_links.md")
+		links, err := ExtractLinks("markdown/testdata/reference_links.md")
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 2)
 	})
 
 	t.Run("FromImageLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/image_links.md")
+		links, err := ExtractLinks("markdown/testdata/image_links.md")
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 
@@ -447,7 +447,7 @@ func TestExtractLinks(t *testing.T) {
 
 	t.Run("FromHTMLLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/html_links.md")
+		links, err := ExtractLinks("markdown/testdata/html_links.md")
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 
@@ -458,7 +458,7 @@ func TestExtractLinks(t *testing.T) {
 
 	t.Run("FromCodeBlocksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/code_blocks.md")
+		links, err := ExtractLinks("markdown/testdata/code_blocks.md")
 		require.NoError(t, err)
 
 		// Should only contain links outside code blocks
@@ -470,7 +470,7 @@ func TestExtractLinks(t *testing.T) {
 
 	t.Run("FromAutolinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/autolinks.md")
+		links, err := ExtractLinks("markdown/testdata/autolinks.md")
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 
@@ -481,47 +481,47 @@ func TestExtractLinks(t *testing.T) {
 
 	t.Run("FromMixedContentFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/mixed_content.md")
+		links, err := ExtractLinks("markdown/testdata/mixed_content.md")
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 4)
 	})
 
 	t.Run("FromNoLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/no_links.md")
+		links, err := ExtractLinks("markdown/testdata/no_links.md")
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("FromEmptyFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/empty.md")
+		links, err := ExtractLinks("markdown/testdata/empty.md")
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("FromEdgeCasesFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/edge_cases.md")
+		links, err := ExtractLinks("markdown/testdata/edge_cases.md")
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 5)
 	})
 
 	t.Run("FileNotFound", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/nonexistent.md")
+		links, err := ExtractLinks("markdown/testdata/nonexistent.md")
 		assert.Error(t, err)
 		assert.Nil(t, links)
 	})
 
 	t.Run("TracksFilePath", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/inline_links.md")
+		links, err := ExtractLinks("markdown/testdata/inline_links.md")
 		require.NoError(t, err)
 		require.NotEmpty(t, links)
 
 		for _, link := range links {
-			assert.Equal(t, "testdata/inline_links.md", link.FilePath)
+			assert.Equal(t, "markdown/testdata/inline_links.md", link.FilePath)
 		}
 	})
 }
@@ -532,8 +532,8 @@ func TestExtractLinksFromMultipleFiles(t *testing.T) {
 	t.Run("AggregatesLinks", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/inline_links.md",
-			"testdata/image_links.md",
+			"markdown/testdata/inline_links.md",
+			"markdown/testdata/image_links.md",
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)
@@ -560,8 +560,8 @@ func TestExtractLinksFromMultipleFiles(t *testing.T) {
 	t.Run("HandlesFileError", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/inline_links.md",
-			"testdata/nonexistent.md",
+			"markdown/testdata/inline_links.md",
+			"markdown/testdata/nonexistent.md",
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)
@@ -686,7 +686,7 @@ HTTP: <http://web.example.com>
 
 	t.Run("FromNonHTTPLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/non_http_links.md")
+		links, err := ExtractLinks("markdown/testdata/non_http_links.md")
 		require.NoError(t, err)
 
 		// Should only have HTTP/HTTPS links
@@ -745,7 +745,7 @@ func TestExtractLinks_NestedFormatting(t *testing.T) {
 
 	t.Run("FromNestedFormattingFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/nested_formatting.md")
+		links, err := ExtractLinks("markdown/testdata/nested_formatting.md")
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 8)
 
@@ -792,7 +792,7 @@ func TestExtractLinks_EmptyLinks(t *testing.T) {
 
 	t.Run("FromEmptyLinksFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinks("testdata/empty_links.md")
+		links, err := ExtractLinks("markdown/testdata/empty_links.md")
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 4)
 	})
@@ -974,9 +974,9 @@ func TestExtractLinksFromMultipleFiles_Parallel(t *testing.T) {
 	t.Run("ThreeFiles_TriggersParallel", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/parallel_test_1.md",
-			"testdata/parallel_test_2.md",
-			"testdata/parallel_test_3.md",
+			"markdown/testdata/parallel_test_1.md",
+			"markdown/testdata/parallel_test_2.md",
+			"markdown/testdata/parallel_test_3.md",
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)
@@ -997,11 +997,11 @@ func TestExtractLinksFromMultipleFiles_Parallel(t *testing.T) {
 	t.Run("FiveFiles_FullParallel", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/parallel_test_1.md",
-			"testdata/parallel_test_2.md",
-			"testdata/parallel_test_3.md",
-			"testdata/parallel_test_4.md",
-			"testdata/parallel_test_5.md",
+			"markdown/testdata/parallel_test_1.md",
+			"markdown/testdata/parallel_test_2.md",
+			"markdown/testdata/parallel_test_3.md",
+			"markdown/testdata/parallel_test_4.md",
+			"markdown/testdata/parallel_test_5.md",
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)
@@ -1021,10 +1021,10 @@ func TestExtractLinksFromMultipleFiles_Parallel(t *testing.T) {
 	t.Run("ParallelWithError", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/parallel_test_1.md",
-			"testdata/parallel_test_2.md",
-			"testdata/nonexistent_parallel.md", // This doesn't exist
-			"testdata/parallel_test_3.md",
+			"markdown/testdata/parallel_test_1.md",
+			"markdown/testdata/parallel_test_2.md",
+			"markdown/testdata/nonexistent_parallel.md", // This doesn't exist
+			"markdown/testdata/parallel_test_3.md",
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)
@@ -1035,9 +1035,9 @@ func TestExtractLinksFromMultipleFiles_Parallel(t *testing.T) {
 	t.Run("ParallelPreservesAllLinks", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/parallel_test_1.md",
-			"testdata/parallel_test_2.md",
-			"testdata/parallel_test_3.md",
+			"markdown/testdata/parallel_test_1.md",
+			"markdown/testdata/parallel_test_2.md",
+			"markdown/testdata/parallel_test_3.md",
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)
@@ -1057,10 +1057,10 @@ func TestExtractLinksFromMultipleFiles_Parallel(t *testing.T) {
 	t.Run("ParallelWithMixedLinkTypes", func(t *testing.T) {
 		t.Parallel()
 		files := []string{
-			"testdata/parallel_test_1.md", // Has inline + image
-			"testdata/parallel_test_2.md", // Has inline + autolink
-			"testdata/parallel_test_3.md", // Has inline + HTML
-			"testdata/parallel_test_4.md", // Has inline + reference
+			"markdown/testdata/parallel_test_1.md", // Has inline + image
+			"markdown/testdata/parallel_test_2.md", // Has inline + autolink
+			"markdown/testdata/parallel_test_3.md", // Has inline + HTML
+			"markdown/testdata/parallel_test_4.md", // Has inline + reference
 		}
 
 		links, err := ExtractLinksFromMultipleFiles(files)

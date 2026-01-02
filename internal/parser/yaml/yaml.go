@@ -1,4 +1,5 @@
-package parser
+// Package yaml implements a URL extractor for YAML files.
+package yaml
 
 import (
 	"bytes"
@@ -6,24 +7,25 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/leonardomso/gone/internal/parser"
 	"gopkg.in/yaml.v3"
 )
 
-// YAMLParser implements FileParser for YAML files.
-type YAMLParser struct{}
+// Parser implements parser.FileParser for YAML files.
+type Parser struct{}
 
-// NewYAMLParser creates a new YAML parser.
-func NewYAMLParser() *YAMLParser {
-	return &YAMLParser{}
+// New creates a new YAML parser.
+func New() *Parser {
+	return &Parser{}
 }
 
 // Extensions returns the file extensions this parser handles.
-func (*YAMLParser) Extensions() []string {
+func (*Parser) Extensions() []string {
 	return []string{".yaml", ".yml"}
 }
 
 // Validate checks if the content is valid YAML.
-func (*YAMLParser) Validate(content []byte) error {
+func (*Parser) Validate(content []byte) error {
 	if len(content) == 0 {
 		return nil // Empty file is valid (no links to extract)
 	}
@@ -44,14 +46,14 @@ func (*YAMLParser) Validate(content []byte) error {
 // Parse extracts links from YAML content.
 // It extracts URLs from both string values and mapping keys.
 // Supports multi-document YAML files.
-func (*YAMLParser) Parse(filename string, content []byte) ([]Link, error) {
+func (*Parser) Parse(filename string, content []byte) ([]parser.Link, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
 
-	extractor := &yamlLinkExtractor{
+	extractor := &linkExtractor{
 		filePath: filename,
-		links:    make([]Link, 0, 32),
+		links:    make([]parser.Link, 0, 32),
 	}
 
 	// Parse all YAML documents in the file
@@ -70,14 +72,14 @@ func (*YAMLParser) Parse(filename string, content []byte) ([]Link, error) {
 	return extractor.links, nil
 }
 
-// yamlLinkExtractor extracts URLs from YAML nodes.
-type yamlLinkExtractor struct {
+// linkExtractor extracts URLs from YAML nodes.
+type linkExtractor struct {
 	filePath string
-	links    []Link
+	links    []parser.Link
 }
 
 // extractFromNode recursively extracts URLs from a YAML node.
-func (e *yamlLinkExtractor) extractFromNode(node *yaml.Node, path string) {
+func (e *linkExtractor) extractFromNode(node *yaml.Node, path string) {
 	if node == nil {
 		return
 	}
@@ -96,14 +98,14 @@ func (e *yamlLinkExtractor) extractFromNode(node *yaml.Node, path string) {
 			valueNode := node.Content[i+1]
 
 			// Check if key is a URL
-			if keyNode.Kind == yaml.ScalarNode && isHTTPURL(keyNode.Value) {
-				e.links = append(e.links, Link{
+			if keyNode.Kind == yaml.ScalarNode && parser.IsHTTPURL(keyNode.Value) {
+				e.links = append(e.links, parser.Link{
 					URL:      keyNode.Value,
 					FilePath: e.filePath,
 					Line:     keyNode.Line,
 					Column:   keyNode.Column,
 					Text:     path + ".<key>",
-					Type:     LinkTypeAutolink,
+					Type:     parser.LinkTypeAutolink,
 				})
 			}
 
@@ -141,43 +143,43 @@ func (e *yamlLinkExtractor) extractFromNode(node *yaml.Node, path string) {
 }
 
 // extractURLsFromScalar extracts URLs from a scalar (string) node.
-func (e *yamlLinkExtractor) extractURLsFromScalar(node *yaml.Node, path string) {
+func (e *linkExtractor) extractURLsFromScalar(node *yaml.Node, path string) {
 	value := node.Value
 
 	// Check if the entire value is a URL
-	if isHTTPURL(value) {
-		e.links = append(e.links, Link{
+	if parser.IsHTTPURL(value) {
+		e.links = append(e.links, parser.Link{
 			URL:      value,
 			FilePath: e.filePath,
 			Line:     node.Line,
 			Column:   node.Column,
 			Text:     path,
-			Type:     LinkTypeAutolink,
+			Type:     parser.LinkTypeAutolink,
 		})
 		return
 	}
 
 	// Check if the value contains URLs (for multi-line strings or embedded URLs)
-	matches := urlRegex.FindAllStringIndex(value, -1)
+	matches := parser.URLRegex.FindAllStringIndex(value, -1)
 	for _, match := range matches {
 		url := value[match[0]:match[1]]
-		url = cleanURLTrailing(url)
-		if !isHTTPURL(url) {
+		url = parser.CleanURLTrailing(url)
+		if !parser.IsHTTPURL(url) {
 			continue
 		}
 
-		e.links = append(e.links, Link{
+		e.links = append(e.links, parser.Link{
 			URL:      url,
 			FilePath: e.filePath,
 			Line:     node.Line,
 			Column:   node.Column,
 			Text:     path,
-			Type:     LinkTypeAutolink,
+			Type:     parser.LinkTypeAutolink,
 		})
 	}
 }
 
 // init registers the YAML parser with the default registry.
 func init() {
-	RegisterParser(NewYAMLParser())
+	parser.RegisterParser(New())
 }

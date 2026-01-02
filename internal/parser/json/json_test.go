@@ -1,25 +1,26 @@
-package parser
+package jsonparser
 
 import (
 	"testing"
 
+	"github.com/leonardomso/gone/internal/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestJSONParser_Extensions(t *testing.T) {
+func TestParser_Extensions(t *testing.T) {
 	t.Parallel()
 
-	p := NewJSONParser()
+	p := New()
 	exts := p.Extensions()
 
 	assert.Contains(t, exts, ".json")
 }
 
-func TestJSONParser_Validate(t *testing.T) {
+func TestParser_Validate(t *testing.T) {
 	t.Parallel()
 
-	p := NewJSONParser()
+	p := New()
 
 	t.Run("ValidJSON", func(t *testing.T) {
 		t.Parallel()
@@ -57,9 +58,9 @@ func TestJSONParser_Validate(t *testing.T) {
 	})
 }
 
-func TestJSONParser_Parse(t *testing.T) {
+func TestParser_Parse(t *testing.T) {
 	t.Parallel()
-	p := NewJSONParser()
+	p := New()
 
 	t.Run("SimpleObject", func(t *testing.T) {
 		t.Parallel()
@@ -205,78 +206,75 @@ func TestJSONParser_Parse(t *testing.T) {
 	})
 }
 
-func TestJSONParser_ParseFromFile(t *testing.T) {
+func TestParser_ParseFromFile(t *testing.T) {
 	t.Parallel()
-	p := NewJSONParser()
 
 	t.Run("SimpleFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/simple.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/simple.json", false)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
 
 	t.Run("NestedFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/nested.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/nested.json", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 6)
 	})
 
 	t.Run("URLsAsKeysFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/urls_as_keys.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/urls_as_keys.json", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 3)
 	})
 
 	t.Run("NoURLsFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/no_urls.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/no_urls.json", false)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("InvalidFileStrict", func(t *testing.T) {
 		t.Parallel()
-		_, err := ExtractLinksWithRegistry("testdata/json/invalid.json", true)
+		_, err := parser.ExtractLinksWithRegistry("testdata/invalid.json", true)
 		assert.Error(t, err)
 	})
 
 	t.Run("InvalidFileNonStrict", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/invalid.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/invalid.json", false)
 		require.NoError(t, err)
 		assert.Nil(t, links)
 	})
 
 	t.Run("EmptyFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/empty.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/empty.json", false)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("ArrayFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/array.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/array.json", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 3)
 	})
 
 	t.Run("EmbeddedURLsFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/json/embedded_urls.json", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/embedded_urls.json", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 3)
 	})
-
-	_ = p // silence unused warning
 }
 
-func TestJSONParser_LineNumbers(t *testing.T) {
+func TestParser_LineNumbers(t *testing.T) {
 	t.Parallel()
-	p := NewJSONParser()
+	p := New()
 
 	t.Run("TracksLineNumbers", func(t *testing.T) {
 		t.Parallel()
@@ -316,15 +314,15 @@ func TestCleanURLTrailing(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := cleanURLTrailing(tt.input)
-		assert.Equal(t, tt.expected, result, "cleanURLTrailing(%q)", tt.input)
+		result := parser.CleanURLTrailing(tt.input)
+		assert.Equal(t, tt.expected, result, "CleanURLTrailing(%q)", tt.input)
 	}
 }
 
-// TestJSONParser_EdgeCases tests edge cases for the JSON parser.
-func TestJSONParser_EdgeCases(t *testing.T) {
+// TestParser_EdgeCases tests edge cases for the JSON parser.
+func TestParser_EdgeCases(t *testing.T) {
 	t.Parallel()
-	p := NewJSONParser()
+	p := New()
 
 	t.Run("UnicodeURLs", func(t *testing.T) {
 		t.Parallel()

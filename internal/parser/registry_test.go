@@ -7,6 +7,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockParser is a test helper that implements FileParser.
+type mockParser struct {
+	extensions []string
+}
+
+func newMockParser(exts ...string) *mockParser {
+	return &mockParser{extensions: exts}
+}
+
+func (m *mockParser) Extensions() []string  { return m.extensions }
+func (*mockParser) Validate(_ []byte) error { return nil }
+func (*mockParser) Parse(_ string, _ []byte) ([]Link, error) {
+	return nil, nil
+}
+
 func TestNewRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -21,7 +36,7 @@ func TestRegistry_Register(t *testing.T) {
 	t.Run("RegistersParser", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		p := NewMarkdownParser()
+		p := newMockParser(".md", ".mdx", ".markdown")
 
 		r.Register(p)
 
@@ -35,8 +50,8 @@ func TestRegistry_Register(t *testing.T) {
 	t.Run("OverwritesExisting", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		p1 := NewMarkdownParser()
-		p2 := NewMarkdownParser()
+		p1 := newMockParser(".md")
+		p2 := newMockParser(".md")
 
 		r.Register(p1)
 		r.Register(p2)
@@ -49,7 +64,7 @@ func TestRegistry_Register(t *testing.T) {
 	t.Run("NormalizesExtension", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		p := NewMarkdownParser()
+		p := newMockParser(".md")
 
 		r.Register(p)
 
@@ -69,7 +84,7 @@ func TestRegistry_Get(t *testing.T) {
 	t.Run("ReturnsRegisteredParser", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		p := NewJSONParser()
+		p := newMockParser(".json")
 		r.Register(p)
 
 		got, ok := r.Get(".json")
@@ -89,7 +104,8 @@ func TestRegistry_Get(t *testing.T) {
 	t.Run("CaseInsensitive", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewJSONParser())
+		p := newMockParser(".json")
+		r.Register(p)
 
 		_, ok := r.Get(".JSON")
 		assert.True(t, ok)
@@ -105,9 +121,9 @@ func TestRegistry_GetForFile(t *testing.T) {
 	t.Run("ReturnsParserForFilename", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
-		r.Register(NewYAMLParser())
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
+		r.Register(newMockParser(".yaml", ".yml"))
 
 		tests := []struct {
 			filename string
@@ -135,9 +151,9 @@ func TestRegistry_SupportedTypes(t *testing.T) {
 	t.Run("ReturnsAllTypes", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
-		r.Register(NewYAMLParser())
+		r.Register(newMockParser(".md", ".mdx", ".markdown"))
+		r.Register(newMockParser(".json"))
+		r.Register(newMockParser(".yaml", ".yml"))
 
 		types := r.SupportedTypes()
 
@@ -162,8 +178,8 @@ func TestRegistry_SupportedExtensions(t *testing.T) {
 	t.Run("ReturnsAllExtensions", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
 
 		exts := r.SupportedExtensions()
 
@@ -176,7 +192,7 @@ func TestRegistry_HasParser(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	r.Register(NewMarkdownParser())
+	r.Register(newMockParser(".md"))
 
 	assert.True(t, r.HasParser(".md"))
 	assert.True(t, r.HasParser("md"))
@@ -189,9 +205,9 @@ func TestRegistry_ExtensionsForTypes(t *testing.T) {
 	t.Run("ReturnsExtensions", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
-		r.Register(NewYAMLParser())
+		r.Register(newMockParser(".md", ".mdx", ".markdown"))
+		r.Register(newMockParser(".json"))
+		r.Register(newMockParser(".yaml", ".yml"))
 
 		exts, err := r.ExtensionsForTypes([]string{"md", "json"})
 		require.NoError(t, err)
@@ -202,7 +218,7 @@ func TestRegistry_ExtensionsForTypes(t *testing.T) {
 	t.Run("ErrorsOnUnsupportedType", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
+		r.Register(newMockParser(".md"))
 
 		_, err := r.ExtensionsForTypes([]string{"md", "unknown"})
 		assert.Error(t, err)
@@ -219,28 +235,28 @@ func TestDefaultRegistry(t *testing.T) {
 		assert.NotNil(t, r)
 	})
 
-	t.Run("HasBuiltinParsers", func(t *testing.T) {
-		t.Parallel()
-		// The init() functions in markdown.go, json.go, yaml.go should register parsers
-		r := DefaultRegistry()
-
-		assert.True(t, r.HasParser(".md"))
-		assert.True(t, r.HasParser(".json"))
-		assert.True(t, r.HasParser(".yaml"))
-		assert.True(t, r.HasParser(".yml"))
-	})
+	// Note: TestDefaultRegistry_HasBuiltinParsers is skipped here
+	// because the subpackages need to be imported to register.
+	// This test should be in an integration test package.
 }
 
 func TestGetParser(t *testing.T) {
 	t.Parallel()
 
-	p, ok := GetParser(".md")
+	// Register a mock parser first
+	RegisterParser(newMockParser(".test"))
+
+	p, ok := GetParser(".test")
 	assert.True(t, ok)
 	assert.NotNil(t, p)
 }
 
 func TestGetParserForFile(t *testing.T) {
 	t.Parallel()
+
+	// Register mock parsers
+	RegisterParser(newMockParser(".md"))
+	RegisterParser(newMockParser(".json"))
 
 	p, ok := GetParserForFile("readme.md")
 	assert.True(t, ok)
@@ -253,6 +269,11 @@ func TestGetParserForFile(t *testing.T) {
 
 func TestSupportedFileTypes(t *testing.T) {
 	t.Parallel()
+
+	// Register mock parsers to ensure types exist
+	RegisterParser(newMockParser(".md"))
+	RegisterParser(newMockParser(".json"))
+	RegisterParser(newMockParser(".yaml"))
 
 	types := SupportedFileTypes()
 	assert.NotEmpty(t, types)
@@ -291,9 +312,9 @@ func TestRegistry_EdgeCases(t *testing.T) {
 		r := NewRegistry()
 
 		// Pre-register some parsers
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
-		r.Register(NewYAMLParser())
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
+		r.Register(newMockParser(".yaml"))
 
 		// Run concurrent reads and writes
 		done := make(chan bool)
@@ -321,9 +342,9 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("SupportedTypesIsSorted", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewYAMLParser())
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
+		r.Register(newMockParser(".yaml"))
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
 
 		types := r.SupportedTypes()
 
@@ -337,7 +358,7 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("EmptyExtension", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
+		r.Register(newMockParser(".md"))
 
 		_, ok := r.Get("")
 		assert.False(t, ok)
@@ -346,7 +367,7 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("GetForFileWithNoExtension", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
+		r.Register(newMockParser(".md"))
 
 		_, ok := r.GetForFile("Makefile")
 		assert.False(t, ok)
@@ -358,8 +379,8 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("GetForFileWithPath", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
 
 		_, ok := r.GetForFile("/path/to/docs/readme.md")
 		assert.True(t, ok)
@@ -371,7 +392,7 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("ExtensionsForTypesEmpty", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
+		r.Register(newMockParser(".md"))
 
 		exts, err := r.ExtensionsForTypes([]string{})
 		require.NoError(t, err)
@@ -381,8 +402,8 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("ExtensionsForTypesCaseInsensitive", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
 
 		exts, err := r.ExtensionsForTypes([]string{"MD", "JSON"})
 		require.NoError(t, err)
@@ -394,8 +415,8 @@ func TestRegistry_EdgeCases(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
 
-		p1 := NewMarkdownParser()
-		p2 := NewMarkdownParser()
+		p1 := newMockParser(".md")
+		p2 := newMockParser(".md")
 
 		r.Register(p1)
 		r.Register(p2)
@@ -409,9 +430,9 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("SupportedExtensionsNoDuplicates", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
-		r.Register(NewJSONParser())
-		r.Register(NewYAMLParser())
+		r.Register(newMockParser(".md"))
+		r.Register(newMockParser(".json"))
+		r.Register(newMockParser(".yaml"))
 
 		exts := r.SupportedExtensions()
 
@@ -426,7 +447,7 @@ func TestRegistry_EdgeCases(t *testing.T) {
 	t.Run("HasParserWithVariousFormats", func(t *testing.T) {
 		t.Parallel()
 		r := NewRegistry()
-		r.Register(NewMarkdownParser())
+		r.Register(newMockParser(".md"))
 
 		// All these should work
 		assert.True(t, r.HasParser(".md"))

@@ -43,7 +43,7 @@ func BenchmarkBuildLineIndex(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		buildLineIndex(content)
+		BuildLineIndex(content)
 	}
 }
 
@@ -53,7 +53,7 @@ func BenchmarkBuildLineIndex_Small(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		buildLineIndex(content)
+		BuildLineIndex(content)
 	}
 }
 
@@ -101,7 +101,7 @@ func BenchmarkIsHTTPURL(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		for _, u := range urls {
-			isHTTPURL(u)
+			IsHTTPURL(u)
 		}
 	}
 }

@@ -42,7 +42,7 @@ Controls:
   ?             Toggle help
   q             Quit
 
-Supported file types: md, json, yaml
+Supported file types: md, json, yaml, toml, xml
 
 Ignore patterns:
   gone interactive --ignore-domain=localhost,example.com
@@ -57,7 +57,7 @@ func init() {
 
 	// File type options
 	interactiveCmd.Flags().StringSliceVarP(&iFileTypes, "types", "T", []string{"md"},
-		"File types to scan (comma-separated): md, json, yaml")
+		"File types to scan (comma-separated): md, json, yaml, toml, xml")
 	interactiveCmd.Flags().BoolVar(&iStrictMode, "strict", false,
 		"Fail on malformed files instead of skipping them")
 

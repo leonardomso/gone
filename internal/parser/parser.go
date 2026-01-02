@@ -122,7 +122,7 @@ func ExtractLinksFromContent(content []byte, filePath string) ([]Link, error) {
 	doc := md.Parser().Parse(reader)
 
 	// Build line offset index for position calculation
-	lines := buildLineIndex(content)
+	lines := BuildLineIndex(content)
 
 	// Extract reference definitions first
 	refDefs := extractRefDefs(content)
@@ -181,7 +181,7 @@ func (e *linkExtractor) handleLink(node *ast.Link) {
 	linkURL := string(node.Destination)
 
 	// Skip non-HTTP links (anchors, mailto, tel, etc.)
-	if !isHTTPURL(linkURL) {
+	if !IsHTTPURL(linkURL) {
 		return
 	}
 
@@ -218,7 +218,7 @@ func (e *linkExtractor) handleImage(node *ast.Image) {
 	imageURL := string(node.Destination)
 
 	// Skip non-HTTP URLs (data URLs, relative paths, etc.)
-	if !isHTTPURL(imageURL) {
+	if !IsHTTPURL(imageURL) {
 		return
 	}
 
@@ -242,7 +242,7 @@ func (e *linkExtractor) handleAutoLink(node *ast.AutoLink) {
 	url := string(node.URL(e.source))
 
 	// Skip non-HTTP URLs
-	if !isHTTPURL(url) {
+	if !IsHTTPURL(url) {
 		return
 	}
 
@@ -271,7 +271,7 @@ func (e *linkExtractor) extractHTMLLinks(content []byte) {
 		linkText := string(content[match[4]:match[5]])
 
 		// Skip non-HTTP URLs
-		if !isHTTPURL(url) {
+		if !IsHTTPURL(url) {
 			continue
 		}
 
@@ -355,10 +355,11 @@ func (e *linkExtractor) offsetToLineCol(offset int) (lineNum, colNum int) {
 	return lineNum, colNum
 }
 
-// buildLineIndex creates an index of byte offsets for the start of each line.
+// BuildLineIndex creates an index of byte offsets for the start of each line.
 // This index enables O(log n) line/column lookups from byte offsets,
 // which is more efficient than scanning from the start for each lookup.
-func buildLineIndex(content []byte) []int {
+// Exported for use by subpackage parsers.
+func BuildLineIndex(content []byte) []int {
 	// Estimate lines: assume avg 60 bytes per line, pre-allocate capacity
 	estimatedLines := len(content)/60 + 1
 	lines := make([]int, 1, estimatedLines)
@@ -409,10 +410,31 @@ func extractRefDefs(content []byte) map[string]refDef {
 	return defs
 }
 
-// isHTTPURL checks if a URL is an HTTP or HTTPS URL.
+// IsHTTPURL checks if a URL is an HTTP or HTTPS URL.
 // Non-HTTP URLs (mailto, tel, file, anchors, etc.) are excluded from link checking.
-func isHTTPURL(url string) bool {
+// Exported for use by subpackage parsers.
+func IsHTTPURL(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
+}
+
+// URLRegex matches HTTP/HTTPS URLs.
+// Exported for use by subpackage parsers.
+var URLRegex = regexp.MustCompile(`https?://[^\s"'\]\}>,]+`)
+
+// CleanURLTrailing removes trailing punctuation from URLs.
+// Exported for use by subpackage parsers.
+func CleanURLTrailing(url string) string {
+	// Remove trailing punctuation that's likely not part of the URL
+	for url != "" {
+		last := url[len(url)-1]
+		if last == '.' || last == ',' || last == ';' || last == ':' ||
+			last == ')' || last == ']' || last == '}' || last == '"' || last == '\'' {
+			url = url[:len(url)-1]
+		} else {
+			break
+		}
+	}
+	return url
 }
 
 // ExtractLinksFromMultipleFiles processes multiple files concurrently and returns all links.

@@ -1,8 +1,9 @@
-package parser
+package yaml
 
 import (
 	"testing"
 
+	"github.com/leonardomso/gone/internal/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -10,7 +11,7 @@ import (
 func TestYAMLParser_Extensions(t *testing.T) {
 	t.Parallel()
 
-	p := NewYAMLParser()
+	p := New()
 	exts := p.Extensions()
 
 	assert.Contains(t, exts, ".yaml")
@@ -20,7 +21,7 @@ func TestYAMLParser_Extensions(t *testing.T) {
 func TestYAMLParser_Validate(t *testing.T) {
 	t.Parallel()
 
-	p := NewYAMLParser()
+	p := New()
 
 	t.Run("ValidYAML", func(t *testing.T) {
 		t.Parallel()
@@ -60,7 +61,7 @@ func TestYAMLParser_Validate(t *testing.T) {
 
 func TestYAMLParser_Parse(t *testing.T) {
 	t.Parallel()
-	p := NewYAMLParser()
+	p := New()
 
 	t.Run("SimpleMapping", func(t *testing.T) {
 		t.Parallel()
@@ -214,62 +215,62 @@ func TestYAMLParser_ParseFromFile(t *testing.T) {
 
 	t.Run("SimpleFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/simple.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/simple.yaml", false)
 		require.NoError(t, err)
 		assert.Len(t, links, 2)
 	})
 
 	t.Run("NestedFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/nested.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/nested.yaml", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 6)
 	})
 
 	t.Run("MultiDocumentFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/multi_document.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/multi_document.yaml", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 4)
 	})
 
 	t.Run("URLsAsKeysFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/urls_as_keys.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/urls_as_keys.yaml", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 3)
 	})
 
 	t.Run("NoURLsFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/no_urls.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/no_urls.yaml", false)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("InvalidFileStrict", func(t *testing.T) {
 		t.Parallel()
-		_, err := ExtractLinksWithRegistry("testdata/yaml/invalid.yaml", true)
+		_, err := parser.ExtractLinksWithRegistry("testdata/invalid.yaml", true)
 		assert.Error(t, err)
 	})
 
 	t.Run("InvalidFileNonStrict", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/invalid.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/invalid.yaml", false)
 		require.NoError(t, err)
 		assert.Nil(t, links)
 	})
 
 	t.Run("EmptyFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/empty.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/empty.yaml", false)
 		require.NoError(t, err)
 		assert.Empty(t, links)
 	})
 
 	t.Run("AnchorsFile", func(t *testing.T) {
 		t.Parallel()
-		links, err := ExtractLinksWithRegistry("testdata/yaml/anchors.yaml", false)
+		links, err := parser.ExtractLinksWithRegistry("testdata/anchors.yaml", false)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(links), 3)
 	})
@@ -277,7 +278,7 @@ func TestYAMLParser_ParseFromFile(t *testing.T) {
 
 func TestYAMLParser_LineNumbers(t *testing.T) {
 	t.Parallel()
-	p := NewYAMLParser()
+	p := New()
 
 	t.Run("TracksLineNumbers", func(t *testing.T) {
 		t.Parallel()
@@ -309,7 +310,7 @@ url2: https://line3.example.com
 
 func TestYAMLParser_PathTracking(t *testing.T) {
 	t.Parallel()
-	p := NewYAMLParser()
+	p := New()
 
 	t.Run("TracksPath", func(t *testing.T) {
 		t.Parallel()
@@ -342,7 +343,7 @@ urls:
 // TestYAMLParser_EdgeCases tests edge cases for the YAML parser.
 func TestYAMLParser_EdgeCases(t *testing.T) {
 	t.Parallel()
-	p := NewYAMLParser()
+	p := New()
 
 	t.Run("FlowStyleMapping", func(t *testing.T) {
 		t.Parallel()
