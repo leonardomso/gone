@@ -333,3 +333,377 @@ func TestConfig_Merge(t *testing.T) {
 		assert.Contains(t, cfg.Ignore.Domains, "domain.com")
 	})
 }
+
+func TestLoadFrom_NewConfigSections(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ValidFullV2Config", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := LoadFrom("testdata/valid_full_v2.yaml")
+		require.NoError(t, err)
+
+		// Check types
+		assert.Len(t, cfg.Types, 3)
+		assert.Contains(t, cfg.Types, "md")
+		assert.Contains(t, cfg.Types, "json")
+		assert.Contains(t, cfg.Types, "yaml")
+
+		// Check scan config
+		assert.Len(t, cfg.Scan.Include, 2)
+		assert.Contains(t, cfg.Scan.Include, "docs/**")
+		assert.Contains(t, cfg.Scan.Include, "README.md")
+		assert.Len(t, cfg.Scan.Exclude, 2)
+		assert.Contains(t, cfg.Scan.Exclude, "node_modules/**")
+		assert.Contains(t, cfg.Scan.Exclude, "vendor/**")
+
+		// Check check config
+		assert.Equal(t, 100, cfg.Check.Concurrency)
+		assert.Equal(t, 30, cfg.Check.Timeout)
+		assert.Equal(t, 3, cfg.Check.Retries)
+		assert.True(t, cfg.Check.Strict)
+
+		// Check output config
+		assert.Equal(t, "json", cfg.Output.Format)
+		assert.True(t, cfg.Output.ShowAlive)
+		assert.True(t, cfg.GetShowWarnings())
+		assert.True(t, cfg.GetShowDead())
+		assert.True(t, cfg.Output.ShowStats)
+
+		// Check ignore config (backwards compatible)
+		assert.Len(t, cfg.Ignore.Domains, 2)
+		assert.Contains(t, cfg.Ignore.Domains, "example.com")
+	})
+
+	t.Run("ValidTypesOnly", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := LoadFrom("testdata/valid_types_only.yaml")
+		require.NoError(t, err)
+
+		assert.Len(t, cfg.Types, 5)
+		assert.Contains(t, cfg.Types, "md")
+		assert.Contains(t, cfg.Types, "json")
+		assert.Contains(t, cfg.Types, "yaml")
+		assert.Contains(t, cfg.Types, "toml")
+		assert.Contains(t, cfg.Types, "xml")
+
+		// Other sections should be empty/default
+		assert.Empty(t, cfg.Scan.Include)
+		assert.Empty(t, cfg.Scan.Exclude)
+		assert.Zero(t, cfg.Check.Concurrency)
+	})
+}
+
+func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ValidConfig", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Types: []string{"md", "json"},
+			Scan: ScanConfig{
+				Include: []string{"docs/**"},
+				Exclude: []string{"vendor/**"},
+			},
+			Check: CheckConfig{
+				Concurrency: 50,
+				Timeout:     30,
+				Retries:     2,
+			},
+			Output: OutputConfig{
+				Format: "json",
+			},
+			Ignore: IgnoreConfig{
+				Patterns: []string{"*.local/*"},
+				Regex:    []string{".*\\.test$"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("InvalidType", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := LoadFrom("testdata/invalid_type.yaml")
+		require.NoError(t, err)
+
+		err = cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid type")
+		assert.Contains(t, err.Error(), "html")
+	})
+
+	t.Run("NegativeConcurrency", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{
+				Concurrency: -1,
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "concurrency")
+	})
+
+	t.Run("NegativeTimeout", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{
+				Timeout: -1,
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "timeout")
+	})
+
+	t.Run("NegativeRetries", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{
+				Retries: -1,
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "retries")
+	})
+
+	t.Run("InvalidOutputFormat", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Output: OutputConfig{
+				Format: "invalid",
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "output.format")
+	})
+
+	t.Run("InvalidScanIncludePattern", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Scan: ScanConfig{
+				Include: []string{"[invalid"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "scan.include")
+	})
+
+	t.Run("InvalidScanExcludePattern", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Scan: ScanConfig{
+				Exclude: []string{"[invalid"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "scan.exclude")
+	})
+
+	t.Run("InvalidIgnorePattern", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Ignore: IgnoreConfig{
+				Patterns: []string{"[invalid"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "ignore.patterns")
+	})
+
+	t.Run("InvalidIgnoreRegex", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Ignore: IgnoreConfig{
+				Regex: []string{"[invalid"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "ignore.regex")
+	})
+}
+
+func TestConfig_HasMethods(t *testing.T) {
+	t.Parallel()
+
+	t.Run("HasTypes", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{}
+		assert.False(t, cfg.HasTypes())
+
+		cfg.Types = []string{"md"}
+		assert.True(t, cfg.HasTypes())
+	})
+
+	t.Run("HasScanConfig", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{}
+		assert.False(t, cfg.HasScanConfig())
+
+		cfg.Scan.Include = []string{"docs/**"}
+		assert.True(t, cfg.HasScanConfig())
+
+		cfg.Scan.Include = nil
+		cfg.Scan.Exclude = []string{"vendor/**"}
+		assert.True(t, cfg.HasScanConfig())
+	})
+
+	t.Run("HasCheckConfig", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{}
+		assert.False(t, cfg.HasCheckConfig())
+
+		cfg.Check.Concurrency = 100
+		assert.True(t, cfg.HasCheckConfig())
+	})
+
+	t.Run("HasOutputConfig", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{}
+		assert.False(t, cfg.HasOutputConfig())
+
+		cfg.Output.Format = "json"
+		assert.True(t, cfg.HasOutputConfig())
+	})
+
+	t.Run("HasIgnoreRules", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{}
+		assert.False(t, cfg.HasIgnoreRules())
+
+		cfg.Ignore.Domains = []string{"example.com"}
+		assert.True(t, cfg.HasIgnoreRules())
+	})
+}
+
+func TestConfig_GetShowWarningsAndDead(t *testing.T) {
+	t.Parallel()
+
+	t.Run("DefaultsToTrue", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{}
+		assert.True(t, cfg.GetShowWarnings())
+		assert.True(t, cfg.GetShowDead())
+	})
+
+	t.Run("RespectsExplicitFalse", func(t *testing.T) {
+		t.Parallel()
+		falseVal := false
+		cfg := &Config{
+			Output: OutputConfig{
+				ShowWarnings: &falseVal,
+				ShowDead:     &falseVal,
+			},
+		}
+		assert.False(t, cfg.GetShowWarnings())
+		assert.False(t, cfg.GetShowDead())
+	})
+
+	t.Run("RespectsExplicitTrue", func(t *testing.T) {
+		t.Parallel()
+		trueVal := true
+		cfg := &Config{
+			Output: OutputConfig{
+				ShowWarnings: &trueVal,
+				ShowDead:     &trueVal,
+			},
+		}
+		assert.True(t, cfg.GetShowWarnings())
+		assert.True(t, cfg.GetShowDead())
+	})
+}
+
+func TestConfig_IsEmpty_WithNewSections(t *testing.T) {
+	t.Parallel()
+
+	t.Run("WithTypes", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Types: []string{"md"}}
+		assert.False(t, cfg.IsEmpty())
+	})
+
+	t.Run("WithScanInclude", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Scan: ScanConfig{Include: []string{"docs/**"}}}
+		assert.False(t, cfg.IsEmpty())
+	})
+
+	t.Run("WithCheckConcurrency", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Check: CheckConfig{Concurrency: 100}}
+		assert.False(t, cfg.IsEmpty())
+	})
+
+	t.Run("WithOutputFormat", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Output: OutputConfig{Format: "json"}}
+		assert.False(t, cfg.IsEmpty())
+	})
+}
+
+func TestConfig_Merge_AllSections(t *testing.T) {
+	t.Parallel()
+
+	t.Run("MergesAllSections", func(t *testing.T) {
+		t.Parallel()
+		cfg1 := &Config{
+			Types: []string{"md"},
+			Scan: ScanConfig{
+				Include: []string{"docs/**"},
+			},
+			Check: CheckConfig{
+				Concurrency: 50,
+			},
+			Output: OutputConfig{
+				Format: "json",
+			},
+		}
+
+		cfg2 := &Config{
+			Types: []string{"json"},
+			Scan: ScanConfig{
+				Exclude: []string{"vendor/**"},
+			},
+			Check: CheckConfig{
+				Timeout: 30,
+			},
+			Output: OutputConfig{
+				ShowStats: true,
+			},
+		}
+
+		cfg1.Merge(cfg2)
+
+		// Types should be merged (additive)
+		assert.Len(t, cfg1.Types, 2)
+		assert.Contains(t, cfg1.Types, "md")
+		assert.Contains(t, cfg1.Types, "json")
+
+		// Scan should be merged (additive)
+		assert.Len(t, cfg1.Scan.Include, 1)
+		assert.Len(t, cfg1.Scan.Exclude, 1)
+
+		// Check should be merged (override if set)
+		assert.Equal(t, 50, cfg1.Check.Concurrency) // Original kept
+		assert.Equal(t, 30, cfg1.Check.Timeout)     // New value set
+
+		// Output should be merged (override if set)
+		assert.Equal(t, "json", cfg1.Output.Format)
+		assert.True(t, cfg1.Output.ShowStats)
+	})
+}

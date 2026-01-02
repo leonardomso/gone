@@ -1,0 +1,35 @@
+# Full configuration example with all sections
+types:
+  - md
+  - json
+  - yaml
+
+scan:
+  include:
+    - "docs/**"
+    - "README.md"
+  exclude:
+    - "node_modules/**"
+    - "vendor/**"
+
+check:
+  concurrency: 100
+  timeout: 30
+  retries: 3
+  strict: true
+
+output:
+  format: json
+  showAlive: true
+  showWarnings: true
+  showDead: true
+  showStats: true
+
+ignore:
+  domains:
+    - example.com
+    - localhost
+  patterns:
+    - "*.local/*"
+  regex:
+    - ".*\\.test$"

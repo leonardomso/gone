@@ -222,3 +222,157 @@ func TestFindFilesByTypes(t *testing.T) {
 		assert.Len(t, files, 2)
 	})
 }
+
+func TestFindFilesWithOptions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("BasicScan", func(t *testing.T) {
+		t.Parallel()
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:  "testdata/nested",
+			Types: []string{"md"},
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 2)
+	})
+
+	t.Run("WithIncludePattern", func(t *testing.T) {
+		t.Parallel()
+		// Create temp structure: docs/readme.md, src/code.md
+		tmpDir := t.TempDir()
+		docsDir := filepath.Join(tmpDir, "docs")
+		srcDir := filepath.Join(tmpDir, "src")
+		require.NoError(t, os.MkdirAll(docsDir, 0o755))
+		require.NoError(t, os.MkdirAll(srcDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(docsDir, "readme.md"), []byte("# Docs"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(srcDir, "code.md"), []byte("# Code"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "root.md"), []byte("# Root"), 0o644))
+
+		// Only include files in docs/**
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:    tmpDir,
+			Types:   []string{"md"},
+			Include: []string{"docs/**"},
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "readme.md")
+	})
+
+	t.Run("WithExcludePattern", func(t *testing.T) {
+		t.Parallel()
+		// Create temp structure with vendor directory
+		tmpDir := t.TempDir()
+		vendorDir := filepath.Join(tmpDir, "vendor")
+		require.NoError(t, os.MkdirAll(vendorDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "readme.md"), []byte("# Main"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(vendorDir, "dep.md"), []byte("# Dep"), 0o644))
+
+		// Exclude vendor/**
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:    tmpDir,
+			Types:   []string{"md"},
+			Exclude: []string{"vendor/**"},
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "readme.md")
+
+		// Verify vendor file was excluded
+		for _, f := range files {
+			assert.NotContains(t, f, "vendor")
+		}
+	})
+
+	t.Run("WithBothIncludeAndExclude", func(t *testing.T) {
+		t.Parallel()
+		// Create temp structure: docs/readme.md, docs/internal/secret.md
+		tmpDir := t.TempDir()
+		docsDir := filepath.Join(tmpDir, "docs")
+		internalDir := filepath.Join(docsDir, "internal")
+		require.NoError(t, os.MkdirAll(internalDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(docsDir, "readme.md"), []byte("# Docs"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(internalDir, "secret.md"), []byte("# Secret"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "other.md"), []byte("# Other"), 0o644))
+
+		// Include docs/**, but exclude **/internal/**
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:    tmpDir,
+			Types:   []string{"md"},
+			Include: []string{"docs/**"},
+			Exclude: []string{"**/internal/**"},
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "readme.md")
+	})
+
+	t.Run("MultipleExcludePatterns", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		vendorDir := filepath.Join(tmpDir, "vendor")
+		nodeModules := filepath.Join(tmpDir, "node_modules")
+		require.NoError(t, os.MkdirAll(vendorDir, 0o755))
+		require.NoError(t, os.MkdirAll(nodeModules, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "readme.md"), []byte("# Main"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(vendorDir, "dep.md"), []byte("# Vendor"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(nodeModules, "pkg.md"), []byte("# NPM"), 0o644))
+
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:    tmpDir,
+			Types:   []string{"md"},
+			Exclude: []string{"vendor/**", "node_modules/**"},
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "readme.md")
+	})
+
+	t.Run("EmptyIncludeReturnsAll", func(t *testing.T) {
+		t.Parallel()
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:    "testdata/nested",
+			Types:   []string{"md"},
+			Include: []string{}, // Empty means no filtering
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 2)
+	})
+
+	t.Run("SpecificFilePattern", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# Readme"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "other.md"), []byte("# Other"), 0o644))
+
+		// Include only README.md
+		files, err := FindFilesWithOptions(ScanOptions{
+			Root:    tmpDir,
+			Types:   []string{"md"},
+			Include: []string{"README.md"},
+		})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "README.md")
+	})
+
+	t.Run("InvalidIncludePattern", func(t *testing.T) {
+		t.Parallel()
+		_, err := FindFilesWithOptions(ScanOptions{
+			Root:    "testdata/single",
+			Types:   []string{"md"},
+			Include: []string{"[invalid"},
+		})
+		assert.Error(t, err)
+	})
+
+	t.Run("InvalidExcludePattern", func(t *testing.T) {
+		t.Parallel()
+		_, err := FindFilesWithOptions(ScanOptions{
+			Root:    "testdata/single",
+			Types:   []string{"md"},
+			Exclude: []string{"[invalid"},
+		})
+		assert.Error(t, err)
+	})
+}

@@ -25,6 +25,21 @@ func ScanFilesCmdWithTypes(path string, fileTypes []string) tea.Cmd {
 	}
 }
 
+// ScanFilesCmdWithOptions returns a command that scans for files using ScanOptions.
+// This supports include/exclude glob patterns from the config file.
+func ScanFilesCmdWithOptions(path string, fileTypes, include, exclude []string) tea.Cmd {
+	return func() tea.Msg {
+		opts := scanner.ScanOptions{
+			Root:    path,
+			Types:   fileTypes,
+			Include: include,
+			Exclude: exclude,
+		}
+		files, err := scanner.FindFilesWithOptions(opts)
+		return FilesFoundMsg{Files: files, Err: err}
+	}
+}
+
 // ExtractLinksCmd extracts links from the given files.
 //
 // Deprecated: Use ExtractLinksCmdWithRegistry instead.

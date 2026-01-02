@@ -85,6 +85,17 @@ Ignore patterns:
   gone check --show-ignored          # Show which URLs were ignored
 
 Config file (.gonerc.yaml):
+  types: [md, json, yaml]       # Default file types to scan
+  scan:
+    include: ["docs/**"]        # Only scan matching paths
+    exclude: ["vendor/**"]      # Skip matching paths
+  check:
+    concurrency: 100            # Concurrent workers
+    timeout: 30                 # Request timeout (seconds)
+    retries: 2                  # Retry attempts
+    strict: false               # Fail on malformed files
+  output:
+    showStats: true             # Show performance stats
   ignore:
     domains: [localhost, example.com]
     patterns: ["*.local/*"]
@@ -145,23 +156,31 @@ func runCheck(_ *cobra.Command, args []string) {
 	perf := stats.New()
 	exitOnError(validateCheckFlags(), "Invalid flags")
 
+	// Load configuration
+	loadedCfg, err := LoadConfig(noConfig)
+	exitOnError(err, "Config error")
+
 	path := getPathArg(args)
-	useStructuredOutput := outputFormat != ""
+
+	// Determine effective output format (CLI overrides config)
+	effectiveFormat := loadedCfg.GetOutputFormat(outputFormat)
+	useStructuredOutput := effectiveFormat != ""
 
 	// Phase 1: Scan for files
-	files := scanFiles(path, perf, useStructuredOutput)
+	files := scanFilesWithConfig(path, loadedCfg, perf, useStructuredOutput)
 
 	// Phase 2: Parse links from files
-	links, urlFilter, done := parseAndFilterLinks(files, perf, useStructuredOutput)
+	links, urlFilter, done := parseAndFilterLinksWithConfig(files, loadedCfg, perf, useStructuredOutput)
 	if done {
 		return
 	}
 
 	// Phase 3: Check URLs
-	results, summary := checkLinks(links, perf)
+	results, summary := checkLinksWithConfig(links, loadedCfg, perf)
 
 	// Phase 4: Output results
-	routeOutput(files, results, summary, urlFilter, perf, useStructuredOutput)
+	effectiveShowStats := loadedCfg.GetShowStats(showStats)
+	routeOutputWithConfig(files, results, summary, urlFilter, perf, useStructuredOutput, effectiveFormat, effectiveShowStats)
 
 	if summary.HasDeadLinks() {
 		os.Exit(1)
@@ -188,7 +207,34 @@ func getPathArg(args []string) string {
 	return "."
 }
 
+// scanFilesWithConfig scans for files using config and CLI values.
+func scanFilesWithConfig(path string, cfg *LoadedConfig, perf *stats.Stats, useStructuredOutput bool) []string {
+	perf.StartScan()
+
+	// Get effective file types (CLI overrides config)
+	effectiveTypes := cfg.GetTypes(fileTypes, []string{"md"})
+
+	// Validate file types
+	if err := validateFileTypes(effectiveTypes); err != nil {
+		exitOnError(err, "Invalid file types")
+	}
+
+	// Build scan options from config
+	scanOpts := cfg.BuildScanOptions(path, fileTypes, []string{"md"})
+
+	files, err := scanner.FindFilesWithOptions(scanOpts)
+	exitOnError(err, "Error scanning directory")
+	perf.EndScan(len(files))
+
+	if !useStructuredOutput {
+		typeStr := strings.Join(effectiveTypes, ", ")
+		fmt.Printf("Found %d file(s) of type(s): %s\n", len(files), typeStr)
+	}
+	return files
+}
+
 // scanFiles scans for files with the specified types and returns the list.
+// Deprecated: Use scanFilesWithConfig for config support.
 func scanFiles(path string, perf *stats.Stats, useStructuredOutput bool) []string {
 	perf.StartScan()
 
@@ -225,8 +271,53 @@ func validateFileTypes(types []string) error {
 	return nil
 }
 
+// parseAndFilterLinksWithConfig extracts links from files and applies filters using config.
+// Returns the links, filter, and whether processing should stop (done=true).
+func parseAndFilterLinksWithConfig(
+	files []string, cfg *LoadedConfig, perf *stats.Stats, useStructuredOutput bool,
+) ([]checker.Link, *filter.Filter, bool) {
+	perf.StartParse()
+
+	// Get effective strict mode
+	effectiveStrict := cfg.GetStrict(strictMode)
+
+	parserLinks, err := parser.ExtractLinksFromMultipleFilesWithRegistry(files, effectiveStrict)
+	exitOnError(err, "Error parsing files")
+
+	if len(parserLinks) == 0 {
+		perf.EndParse(0, 0, 0, 0)
+		effectiveShowStats := cfg.GetShowStats(showStats)
+		handleEmptyLinksWithStatsV2(files, useStructuredOutput, perf, effectiveShowStats)
+		return nil, nil, true
+	}
+
+	// Create filter using config + CLI overrides
+	urlFilter, err := CreateFilterWithConfig(cfg.Config(), ignoreDomains, ignorePatterns, ignoreRegex)
+	exitOnError(err, "Error creating filter")
+
+	links := FilterParserLinks(parserLinks, urlFilter)
+	ignoredCount := getIgnoredCount(urlFilter)
+	uniqueURLs := CountUniqueURLs(links)
+	duplicates := len(links) - uniqueURLs
+
+	perf.EndParse(len(parserLinks), uniqueURLs, duplicates, ignoredCount)
+
+	if !useStructuredOutput {
+		printProgressMessage(len(parserLinks), len(links), uniqueURLs, duplicates, ignoredCount)
+	}
+
+	if len(links) == 0 {
+		effectiveShowStats := cfg.GetShowStats(showStats)
+		handleAllFilteredWithStatsV2(files, useStructuredOutput, urlFilter, perf, effectiveShowStats)
+		return nil, urlFilter, true
+	}
+
+	return links, urlFilter, false
+}
+
 // parseAndFilterLinks extracts links from files and applies filters.
 // Returns the links, filter, and whether processing should stop (done=true).
+// Deprecated: Use parseAndFilterLinksWithConfig for config support.
 func parseAndFilterLinks(
 	files []string, perf *stats.Stats, useStructuredOutput bool,
 ) ([]checker.Link, *filter.Filter, bool) {
@@ -275,7 +366,22 @@ func getIgnoredCount(urlFilter *filter.Filter) int {
 	return 0
 }
 
+// checkLinksWithConfig checks all links using config values and returns results with summary.
+func checkLinksWithConfig(links []checker.Link, cfg *LoadedConfig, perf *stats.Stats) ([]checker.Result, checker.Summary) {
+	perf.StartCheck()
+
+	opts := cfg.BuildCheckerOptions(concurrency, timeout, retries)
+
+	c := checker.New(opts)
+	results := c.CheckAll(links)
+	summary := checker.Summarize(results)
+
+	perf.EndCheck()
+	return results, summary
+}
+
 // checkLinks checks all links and returns results with summary.
+// Deprecated: Use checkLinksWithConfig for config support.
 func checkLinks(links []checker.Link, perf *stats.Stats) ([]checker.Result, checker.Summary) {
 	perf.StartCheck()
 
@@ -292,7 +398,27 @@ func checkLinks(links []checker.Link, perf *stats.Stats) ([]checker.Result, chec
 	return results, summary
 }
 
+// routeOutputWithConfig handles output based on format flags and config.
+func routeOutputWithConfig(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats, useStructuredOutput bool,
+	effectiveFormat string, effectiveShowStats bool,
+) {
+	switch {
+	case useStructuredOutput:
+		handleStructuredOutputWithStatsV2(files, results, summary, urlFilter, perf, effectiveFormat, effectiveShowStats)
+	case outputFile != "":
+		handleFileOutputWithStatsV2(files, results, summary, urlFilter, perf, effectiveShowStats)
+	default:
+		outputText(results, summary, urlFilter)
+		if effectiveShowStats {
+			fmt.Print(perf.String())
+		}
+	}
+}
+
 // routeOutput handles output based on format flags.
+// Deprecated: Use routeOutputWithConfig for config support.
 func routeOutput(
 	files []string, results []checker.Result, summary checker.Summary,
 	urlFilter *filter.Filter, perf *stats.Stats, useStructuredOutput bool,
@@ -327,7 +453,23 @@ func validateCheckFlags() error {
 	return nil
 }
 
+// handleEmptyLinksWithStatsV2 handles the case when no links are found, with config.
+func handleEmptyLinksWithStatsV2(files []string, useStructuredOutput bool, perf *stats.Stats, effectiveShowStats bool) {
+	switch {
+	case useStructuredOutput:
+		handleStructuredOutputWithStatsV2(files, nil, checker.Summary{}, nil, perf, outputFormat, effectiveShowStats)
+	case outputFile != "":
+		handleFileOutputWithStatsV2(files, nil, checker.Summary{}, nil, perf, effectiveShowStats)
+	default:
+		fmt.Println("No links found.")
+		if effectiveShowStats {
+			fmt.Print(perf.String())
+		}
+	}
+}
+
 // handleEmptyLinksWithStats handles the case when no links are found in the files.
+// Deprecated: Use handleEmptyLinksWithStatsV2 for config support.
 func handleEmptyLinksWithStats(files []string, useStructuredOutput bool, perf *stats.Stats) {
 	switch {
 	case useStructuredOutput:
@@ -342,7 +484,26 @@ func handleEmptyLinksWithStats(files []string, useStructuredOutput bool, perf *s
 	}
 }
 
+// handleAllFilteredWithStatsV2 handles the case when all links were filtered out, with config.
+func handleAllFilteredWithStatsV2(files []string, useStructuredOutput bool, urlFilter *filter.Filter, perf *stats.Stats, effectiveShowStats bool) {
+	switch {
+	case useStructuredOutput:
+		handleStructuredOutputWithStatsV2(files, nil, checker.Summary{}, urlFilter, perf, outputFormat, effectiveShowStats)
+	case outputFile != "":
+		handleFileOutputWithStatsV2(files, nil, checker.Summary{}, urlFilter, perf, effectiveShowStats)
+	default:
+		fmt.Println("\nAll links were ignored by filter rules.")
+		if showIgnored && urlFilter != nil {
+			printIgnoredURLs(urlFilter)
+		}
+		if effectiveShowStats {
+			fmt.Print(perf.String())
+		}
+	}
+}
+
 // handleAllFilteredWithStats handles the case when all links were filtered out.
+// Deprecated: Use handleAllFilteredWithStatsV2 for config support.
 func handleAllFilteredWithStats(files []string, useStructuredOutput bool, urlFilter *filter.Filter, perf *stats.Stats) {
 	switch {
 	case useStructuredOutput:
@@ -360,7 +521,24 @@ func handleAllFilteredWithStats(files []string, useStructuredOutput bool, urlFil
 	}
 }
 
+// handleStructuredOutputWithStatsV2 outputs to stdout with optional stats, using config.
+func handleStructuredOutputWithStatsV2(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats, effectiveFormat string, effectiveShowStats bool,
+) {
+	report := buildReportWithStatsV2(files, results, summary, urlFilter, perf, effectiveShowStats)
+
+	data, err := output.FormatReport(report, output.Format(effectiveFormat))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(string(data))
+}
+
 // handleStructuredOutputWithStats outputs to stdout with optional stats.
+// Deprecated: Use handleStructuredOutputWithStatsV2 for config support.
 func handleStructuredOutputWithStats(
 	files []string, results []checker.Result, summary checker.Summary,
 	urlFilter *filter.Filter, perf *stats.Stats,
@@ -376,7 +554,35 @@ func handleStructuredOutputWithStats(
 	fmt.Print(string(data))
 }
 
+// handleFileOutputWithStatsV2 writes to file with optional stats, using config.
+func handleFileOutputWithStatsV2(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats, effectiveShowStats bool,
+) {
+	report := buildReportWithStatsV2(files, results, summary, urlFilter, perf, effectiveShowStats)
+
+	if err := output.WriteToFile(report, outputFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Wrote report to %s\n", outputFile)
+
+	// Also print summary to stdout
+	fmt.Printf("\nSummary: %d alive | %d warnings | %d dead | %d duplicates",
+		summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
+	if urlFilter != nil && urlFilter.IgnoredCount() > 0 {
+		fmt.Printf(" | %d ignored", urlFilter.IgnoredCount())
+	}
+	fmt.Println()
+
+	if effectiveShowStats {
+		fmt.Print(perf.String())
+	}
+}
+
 // handleFileOutputWithStats writes to file with optional stats.
+// Deprecated: Use handleFileOutputWithStatsV2 for config support.
 func handleFileOutputWithStats(
 	files []string, results []checker.Result, summary checker.Summary,
 	urlFilter *filter.Filter, perf *stats.Stats,
@@ -403,7 +609,23 @@ func handleFileOutputWithStats(
 	}
 }
 
+// buildReportWithStatsV2 creates an output.Report with optional stats, using config.
+func buildReportWithStatsV2(
+	files []string, results []checker.Result, summary checker.Summary,
+	urlFilter *filter.Filter, perf *stats.Stats, effectiveShowStats bool,
+) *output.Report {
+	report := buildReport(files, results, summary, urlFilter)
+
+	// Add stats if requested
+	if effectiveShowStats && perf != nil {
+		report.Stats = perf.ToJSON()
+	}
+
+	return report
+}
+
 // buildReportWithStats creates an output.Report with optional stats.
+// Deprecated: Use buildReportWithStatsV2 for config support.
 func buildReportWithStats(
 	files []string, results []checker.Result, summary checker.Summary,
 	urlFilter *filter.Filter, perf *stats.Stats,

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/leonardomso/gone/internal/checker"
 	"github.com/leonardomso/gone/internal/fixer"
@@ -116,11 +115,21 @@ func runFix(_ *cobra.Command, args []string) {
 	// Initialize stats tracking
 	perf := stats.New()
 
+	// Load configuration
+	loadedCfg, err := LoadConfig(fixNoConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Determine the path to scan
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
+
+	// Get effective file types from config
+	effectiveTypes := loadedCfg.GetTypes(fixFileTypes, []string{"md"})
 
 	// Validate file types
 	supportedTypes := parser.SupportedFileTypes()
@@ -128,7 +137,7 @@ func runFix(_ *cobra.Command, args []string) {
 	for _, t := range supportedTypes {
 		supported[t] = true
 	}
-	for _, t := range fixFileTypes {
+	for _, t := range effectiveTypes {
 		if !supported[strings.ToLower(t)] {
 			fmt.Fprintf(os.Stderr, "Error: unsupported file type: %s (supported: %s)\n",
 				t, strings.Join(supportedTypes, ", "))
@@ -136,42 +145,44 @@ func runFix(_ *cobra.Command, args []string) {
 		}
 	}
 
-	// Phase 1: Scan for files
+	// Phase 1: Scan for files with config
 	perf.StartScan()
-	files, err := scanner.FindFilesByTypes(path, fixFileTypes)
+	scanOpts := loadedCfg.BuildScanOptions(path, fixFileTypes, []string{"md"})
+	files, err := scanner.FindFilesWithOptions(scanOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
 		os.Exit(1)
 	}
 	perf.EndScan(len(files))
 
-	typeStr := strings.Join(fixFileTypes, ", ")
+	typeStr := strings.Join(effectiveTypes, ", ")
 	fmt.Printf("Found %d file(s) of type(s): %s\n", len(files), typeStr)
+
+	// Get effective strict mode
+	effectiveStrict := loadedCfg.GetStrict(fixStrictMode)
 
 	// Phase 2: Parse links
 	perf.StartParse()
-	parserLinks, err := parser.ExtractLinksFromMultipleFilesWithRegistry(files, fixStrictMode)
+	parserLinks, err := parser.ExtractLinksFromMultipleFilesWithRegistry(files, effectiveStrict)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing files: %v\n", err)
 		os.Exit(1)
 	}
 
+	// Get effective show stats
+	effectiveShowStats := loadedCfg.GetShowStats(fixShowStats)
+
 	if len(parserLinks) == 0 {
 		perf.EndParse(0, 0, 0, 0)
 		fmt.Println("No links found.")
-		if fixShowStats {
+		if effectiveShowStats {
 			fmt.Print(perf.String())
 		}
 		return
 	}
 
-	// Load and create filter using shared helper
-	urlFilter, err := CreateFilter(FilterOptions{
-		Domains:  fixIgnoreDomains,
-		Patterns: fixIgnorePatterns,
-		Regex:    fixIgnoreRegex,
-		NoConfig: fixNoConfig,
-	})
+	// Load and create filter using config + CLI
+	urlFilter, err := CreateFilterWithConfig(loadedCfg.Config(), fixIgnoreDomains, fixIgnorePatterns, fixIgnoreRegex)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
 		os.Exit(1)
@@ -193,7 +204,7 @@ func runFix(_ *cobra.Command, args []string) {
 
 	if len(links) == 0 {
 		fmt.Println("All links were ignored by filter rules.")
-		if fixShowStats {
+		if effectiveShowStats {
 			fmt.Print(perf.String())
 		}
 		return
@@ -204,11 +215,8 @@ func runFix(_ *cobra.Command, args []string) {
 	// Phase 3: Check URLs
 	perf.StartCheck()
 
-	// Create checker and check all links
-	opts := checker.DefaultOptions().
-		WithConcurrency(fixConcurrency).
-		WithTimeout(time.Duration(fixTimeout) * time.Second).
-		WithMaxRetries(fixRetries)
+	// Create checker with config values
+	opts := loadedCfg.BuildCheckerOptions(fixConcurrency, fixTimeout, fixRetries)
 
 	c := checker.New(opts)
 	results := c.CheckAll(links)
@@ -223,7 +231,7 @@ func runFix(_ *cobra.Command, args []string) {
 	if len(changes) == 0 {
 		fmt.Println("\nNo fixable redirects found.")
 		printFixSummary(results)
-		if fixShowStats {
+		if effectiveShowStats {
 			fmt.Print(perf.String())
 		}
 		return
@@ -236,7 +244,7 @@ func runFix(_ *cobra.Command, args []string) {
 	// Handle dry-run mode
 	if fixDryRun {
 		fmt.Println("Dry-run mode: no files were modified.")
-		if fixShowStats {
+		if effectiveShowStats {
 			fmt.Print(perf.String())
 		}
 		return
@@ -245,7 +253,7 @@ func runFix(_ *cobra.Command, args []string) {
 	// Handle automatic mode
 	if fixYes {
 		applyAllFixes(f, changes)
-		if fixShowStats {
+		if effectiveShowStats {
 			fmt.Print(perf.String())
 		}
 		return
@@ -253,7 +261,7 @@ func runFix(_ *cobra.Command, args []string) {
 
 	// Interactive mode
 	runInteractiveFix(f, changes)
-	if fixShowStats {
+	if effectiveShowStats {
 		fmt.Print(perf.String())
 	}
 }

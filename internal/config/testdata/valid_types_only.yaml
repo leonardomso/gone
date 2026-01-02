@@ -1,0 +1,7 @@
+# Configuration with only types specified
+types:
+  - md
+  - json
+  - yaml
+  - toml
+  - xml

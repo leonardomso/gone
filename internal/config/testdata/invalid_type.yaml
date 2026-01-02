@@ -1,0 +1,4 @@
+# Invalid configuration - unsupported file type
+types:
+  - md
+  - html  # not supported

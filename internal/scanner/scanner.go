@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/gobwas/glob"
 )
 
 // FindMarkdownFiles walks a directory and returns all .md file paths
@@ -99,4 +101,99 @@ func FindFilesByTypes(root string, types []string) ([]string, error) {
 	}
 
 	return FindFiles(root, extensions)
+}
+
+// ScanOptions holds options for scanning files with filtering.
+type ScanOptions struct {
+	// Root is the directory to scan.
+	Root string
+
+	// Types are the file types to include (e.g., "md", "json", "yaml").
+	Types []string
+
+	// Include patterns (glob) - if set, only matching files are included.
+	Include []string
+
+	// Exclude patterns (glob) - matching files are excluded.
+	Exclude []string
+}
+
+// FindFilesWithOptions scans for files with include/exclude filtering.
+// This is the recommended function for scanning with full configuration support.
+func FindFilesWithOptions(opts ScanOptions) ([]string, error) {
+	// Get base files by type
+	files, err := FindFilesByTypes(opts.Root, opts.Types)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply include filter (if any patterns specified)
+	if len(opts.Include) > 0 {
+		files, err = filterByGlobPatterns(files, opts.Root, opts.Include, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Apply exclude filter
+	if len(opts.Exclude) > 0 {
+		files, err = filterByGlobPatterns(files, opts.Root, opts.Exclude, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return files, nil
+}
+
+// filterByGlobPatterns filters files by glob patterns.
+// If include=true, keeps only files matching any pattern.
+// If include=false, removes files matching any pattern.
+func filterByGlobPatterns(files []string, root string, patterns []string, include bool) ([]string, error) {
+	if len(patterns) == 0 {
+		return files, nil
+	}
+
+	// Compile patterns
+	compiled := make([]glob.Glob, 0, len(patterns))
+	for _, p := range patterns {
+		g, err := glob.Compile(p)
+		if err != nil {
+			return nil, err
+		}
+		compiled = append(compiled, g)
+	}
+
+	result := make([]string, 0, len(files))
+	for _, f := range files {
+		// Get relative path for matching (relative to root)
+		relPath, err := filepath.Rel(root, f)
+		if err != nil {
+			relPath = f // Fall back to absolute path
+		}
+		// Normalize path separators for cross-platform glob matching
+		relPath = filepath.ToSlash(relPath)
+
+		matches := matchesAnyGlob(relPath, compiled)
+
+		// For include mode: keep files that match any pattern
+		// For exclude mode: keep files that don't match any pattern
+		if include && matches {
+			result = append(result, f)
+		} else if !include && !matches {
+			result = append(result, f)
+		}
+	}
+
+	return result, nil
+}
+
+// matchesAnyGlob checks if a path matches any of the compiled glob patterns.
+func matchesAnyGlob(path string, patterns []glob.Glob) bool {
+	for _, g := range patterns {
+		if g.Match(path) {
+			return true
+		}
+	}
+	return false
 }

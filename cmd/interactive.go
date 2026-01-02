@@ -74,10 +74,20 @@ func init() {
 
 // runInteractive launches the interactive TUI for link checking.
 func runInteractive(_ *cobra.Command, args []string) {
+	// Load configuration
+	loadedCfg, err := LoadConfig(iNoConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
+	}
+
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
+
+	// Get effective file types from config
+	effectiveTypes := loadedCfg.GetTypes(iFileTypes, []string{"md"})
 
 	// Validate file types
 	supportedTypes := parser.SupportedFileTypes()
@@ -85,7 +95,7 @@ func runInteractive(_ *cobra.Command, args []string) {
 	for _, t := range supportedTypes {
 		supported[t] = true
 	}
-	for _, t := range iFileTypes {
+	for _, t := range effectiveTypes {
 		if !supported[strings.ToLower(t)] {
 			fmt.Fprintf(os.Stderr, "Error: unsupported file type: %s (supported: %s)\n",
 				t, strings.Join(supportedTypes, ", "))
@@ -93,19 +103,20 @@ func runInteractive(_ *cobra.Command, args []string) {
 		}
 	}
 
+	// Get effective strict mode
+	effectiveStrict := loadedCfg.GetStrict(iStrictMode)
+
 	// Create filter from config and flags using shared helper
-	urlFilter, err := CreateFilter(FilterOptions{
-		Domains:  iIgnoreDomains,
-		Patterns: iIgnorePatterns,
-		Regex:    iIgnoreRegex,
-		NoConfig: iNoConfig,
-	})
+	urlFilter, err := CreateFilterWithConfig(loadedCfg.Config(), iIgnoreDomains, iIgnorePatterns, iIgnoreRegex)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
 	}
 
-	p := tea.NewProgram(ui.New(path, urlFilter, iFileTypes, iStrictMode), tea.WithAltScreen())
+	// Get scan options for include/exclude patterns
+	scanInclude, scanExclude := loadedCfg.GetScanOptions()
+
+	p := tea.NewProgram(ui.New(path, urlFilter, effectiveTypes, effectiveStrict, scanInclude, scanExclude), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running interactive mode: %v\n", err)
 		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points

@@ -83,10 +83,12 @@ type Model struct {
 	urlFilter *filter.Filter
 
 	// Config
-	path       string
-	keys       KeyMap
-	fileTypes  []string
-	strictMode bool
+	path        string
+	keys        KeyMap
+	fileTypes   []string
+	strictMode  bool
+	scanInclude []string
+	scanExclude []string
 
 	// Data
 	files   []string
@@ -123,7 +125,8 @@ type Model struct {
 // Optional filter can be passed to ignore certain URLs.
 // fileTypes specifies which file types to scan (e.g., ["md", "json"]).
 // strictMode causes parsing to fail on malformed files.
-func New(path string, urlFilter *filter.Filter, fileTypes []string, strictMode bool) Model {
+// scanInclude/scanExclude are optional glob patterns to filter files.
+func New(path string, urlFilter *filter.Filter, fileTypes []string, strictMode bool, scanInclude, scanExclude []string) Model {
 	if path == "" {
 		path = "."
 	}
@@ -156,22 +159,24 @@ func New(path string, urlFilter *filter.Filter, fileTypes []string, strictMode b
 	l.Styles.Title = TitleStyle
 
 	return Model{
-		state:      stateScanning,
-		spinner:    s,
-		list:       l,
-		help:       h,
-		keys:       k,
-		filter:     filterAll,
-		path:       path,
-		urlFilter:  urlFilter,
-		fileTypes:  fileTypes,
-		strictMode: strictMode,
+		state:       stateScanning,
+		spinner:     s,
+		list:        l,
+		help:        h,
+		keys:        k,
+		filter:      filterAll,
+		path:        path,
+		urlFilter:   urlFilter,
+		fileTypes:   fileTypes,
+		strictMode:  strictMode,
+		scanInclude: scanInclude,
+		scanExclude: scanExclude,
 	}
 }
 
 // Init initializes the model.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, ScanFilesCmdWithTypes(m.path, m.fileTypes))
+	return tea.Batch(m.spinner.Tick, ScanFilesCmdWithOptions(m.path, m.fileTypes, m.scanInclude, m.scanExclude))
 }
 
 // =============================================================================

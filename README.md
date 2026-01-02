@@ -1,13 +1,13 @@
 # gone
 
-**Fast, concurrent dead link detector for markdown files.**
+**Fast, concurrent dead link detector for documentation files.**
 
 [![Test](https://github.com/leonardomso/gone/actions/workflows/test.yml/badge.svg)](https://github.com/leonardomso/gone/actions/workflows/test.yml)
 [![Lint](https://github.com/leonardomso/gone/actions/workflows/lint.yml/badge.svg)](https://github.com/leonardomso/gone/actions/workflows/lint.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/leonardomso/gone)](https://goreportcard.com/report/github.com/leonardomso/gone)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, checks if they're still alive, and helps you fix the ones that aren't.
+Scan your documentation files for broken links. `gone` finds all HTTP/HTTPS URLs in Markdown, JSON, YAML, TOML, and XML files, checks if they're still alive, and helps you fix the ones that aren't.
 
 <p align="center">
   <img src="./github-image.png" alt="gone" width="100%">
@@ -27,7 +27,7 @@ Scan your markdown files for broken links. `gone` finds all HTTP/HTTPS URLs, che
 
 - **Multiple output formats.** JSON, YAML, XML, JUnit, Markdown—pick your favorite. The format is auto-detected from the file extension, or set it explicitly with `--format`.
 
-- **Markdown-aware parsing.** Finds links in `[text](url)`, reference-style `[text][ref]`, autolinks `<url>`, and HTML `<a>` tags. Knows to skip URLs inside code blocks.
+- **Multi-format support.** Scan Markdown, JSON, YAML, TOML, and XML files. Markdown parsing is format-aware: finds links in `[text](url)`, reference-style `[text][ref]`, autolinks `<url>`, and HTML `<a>` tags while skipping code blocks.
 
 - **CI/CD friendly.** Exit code 0 means all good. Exit code 1 means dead links. JUnit output works with GitHub Actions, GitLab CI, Jenkins, and everything else.
 
@@ -78,11 +78,14 @@ Download the latest release from the [GitHub Releases](https://github.com/leonar
 ## Quick Start
 
 ```bash
-# Scan current directory
+# Scan current directory (markdown files by default)
 gone check
 
 # Scan specific directory
 gone check ./docs
+
+# Scan multiple file types
+gone check --types=md,json,yaml
 
 # Output as JSON
 gone check --format=json
@@ -98,7 +101,7 @@ gone fix
 
 ### `gone check`
 
-Scan markdown files for dead links.
+Scan files for dead links.
 
 ```bash
 gone check [path] [flags]
@@ -108,6 +111,8 @@ gone check [path] [flags]
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
+| `--types` | `-T` | `md` | File types to scan (comma-separated): md, json, yaml, toml, xml |
+| `--strict` | — | `false` | Fail on malformed files instead of skipping them |
 | `--format` | `-f` | — | Output format: `json`, `yaml`, `xml`, `junit`, `markdown` |
 | `--output` | `-o` | — | Write report to file (format inferred from extension) |
 | `--all` | `-a` | `false` | Show all results including alive links |
@@ -138,6 +143,12 @@ gone check [path] [flags]
 **Examples:**
 
 ```bash
+# Scan markdown, JSON, and YAML files
+gone check --types=md,json,yaml
+
+# Scan with strict mode (fail on malformed files)
+gone check --types=json --strict
+
 # Scan with JSON output to stdout
 gone check --format=json
 
@@ -164,12 +175,14 @@ gone interactive [path] [flags]
 
 **Flags:**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--ignore-domain` | — | Domains to ignore |
-| `--ignore-pattern` | — | Glob patterns to ignore |
-| `--ignore-regex` | — | Regex patterns to ignore |
-| `--no-config` | `false` | Skip loading .gonerc.yaml |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--types` | `-T` | `md` | File types to scan (comma-separated): md, json, yaml, toml, xml |
+| `--strict` | — | `false` | Fail on malformed files instead of skipping them |
+| `--ignore-domain` | — | — | Domains to ignore |
+| `--ignore-pattern` | — | — | Glob patterns to ignore |
+| `--ignore-regex` | — | — | Regex patterns to ignore |
+| `--no-config` | — | `false` | Skip loading .gonerc.yaml |
 
 **Controls:**
 
@@ -187,7 +200,7 @@ gone interactive [path] [flags]
 
 ### `gone fix`
 
-Automatically fix redirect URLs in markdown files.
+Automatically fix redirect URLs in files.
 
 ```bash
 gone fix [path] [flags]
@@ -197,6 +210,8 @@ gone fix [path] [flags]
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
+| `--types` | `-T` | `md` | File types to scan (comma-separated): md, json, yaml, toml, xml |
+| `--strict` | — | `false` | Fail on malformed files instead of skipping them |
 | `--yes` | `-y` | `false` | Apply all fixes without prompting |
 | `--dry-run` | `-n` | `false` | Preview changes without modifying files |
 | `--concurrency` | `-c` | `50` | Number of concurrent workers |
@@ -206,6 +221,7 @@ gone fix [path] [flags]
 | `--ignore-pattern` | — | — | Glob patterns to ignore |
 | `--ignore-regex` | — | — | Regex patterns to ignore |
 | `--no-config` | — | `false` | Skip loading .gonerc.yaml |
+| `--stats` | — | `false` | Show performance statistics |
 
 **Examples:**
 
@@ -257,6 +273,42 @@ gone completion fish | source
 Create a `.gonerc.yaml` file in your project root:
 
 ```yaml
+# File types to scan (default: md)
+types:
+  - md
+  - json
+  - yaml
+  - toml
+  - xml
+
+# Scanner settings
+scan:
+  # Include only files matching these glob patterns
+  include:
+    - "docs/**"
+    - "README.md"
+  # Exclude files matching these glob patterns
+  exclude:
+    - "node_modules/**"
+    - "vendor/**"
+    - ".git/**"
+
+# Checker settings
+check:
+  concurrency: 50  # Number of concurrent workers
+  timeout: 10      # Request timeout in seconds
+  retries: 2       # Retry attempts for failed requests
+  strict: false    # Fail on malformed files
+
+# Output preferences
+output:
+  format: ""         # Default format (json, yaml, xml, junit, markdown)
+  showAlive: false   # Show alive links in output
+  showWarnings: true # Show warnings (redirects, blocked)
+  showDead: true     # Show dead links
+  showStats: false   # Show performance statistics
+
+# Ignore rules
 ignore:
   # Ignore entire domains (includes subdomains)
   domains:
@@ -275,12 +327,28 @@ ignore:
     - "192\\.168\\..*"
 ```
 
+### Supported File Types
+
+| Type | Extensions | Description |
+|------|------------|-------------|
+| `md` | `.md`, `.mdx`, `.markdown` | Markdown files |
+| `json` | `.json` | JSON files |
+| `yaml` | `.yaml`, `.yml` | YAML files |
+| `toml` | `.toml` | TOML files |
+| `xml` | `.xml` | XML files |
+
 ### CLI Flags
 
-CLI flags are additive with config file settings:
+CLI flags override config file settings:
 
 ```bash
-# These are combined with .gonerc.yaml settings
+# Override types from config
+gone check --types=md,json
+
+# Override concurrency
+gone check --concurrency=100
+
+# These ignore rules are combined with .gonerc.yaml settings
 gone check --ignore-domain=api.example.com --ignore-pattern="*.internal/*"
 ```
 
@@ -370,7 +438,7 @@ jobs:
 
 | Command | Description |
 |---------|-------------|
-| `gone check [path]` | Scan markdown files and report dead links |
+| `gone check [path]` | Scan files and report dead links |
 | `gone fix [path]` | Find redirects and update URLs to final destinations |
 | `gone interactive [path]` | Launch terminal UI for interactive exploration |
 | `gone completion [shell]` | Generate shell autocompletion (bash, zsh, fish, powershell) |
@@ -380,6 +448,8 @@ jobs:
 
 | Flag | Commands | Default | Description |
 |------|----------|---------|-------------|
+| `--types` | check, fix, interactive | `md` | File types to scan (comma-separated) |
+| `--strict` | check, fix, interactive | `false` | Fail on malformed files |
 | `-f, --format` | check | — | Output format (json, yaml, xml, junit, markdown) |
 | `-o, --output` | check | — | Write report to file |
 | `-a, --all` | check | `false` | Show all results including alive |
