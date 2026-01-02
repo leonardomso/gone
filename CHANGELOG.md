@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3](https://github.com/leonardomso/gone/compare/v0.1.2...v0.1.3) (2026-01-02)
+
+
+### Features
+
+* add MDX support and reorganize markdown parser ([bde6e39](https://github.com/leonardomso/gone/commit/bde6e3972b25233ce90753bd7948f5eb1040acf2))
+* add multi-format URL checking support (Phase 1) ([cee8c08](https://github.com/leonardomso/gone/commit/cee8c083e35b2181df83e0f56cf1453cfc151d20))
+* add TOML and XML parser support ([e3a7021](https://github.com/leonardomso/gone/commit/e3a70218abbad1fe2b97ebd702a613153e14cf0b))
+* extend config to support multi-format scanning and checker options ([9c57f7e](https://github.com/leonardomso/gone/commit/9c57f7e3ec596323b637dcbe1d1295fecb3807d6))
+
+
+### Performance Improvements
+
+* optimize parsers with ValidateAndParse and reduce allocations ([9f0019b](https://github.com/leonardomso/gone/commit/9f0019b692477bcda7c33e89ba4ad33e288563a7))
+
+
+### Code Refactoring
+
+* reorganize parser into format-specific subpackages ([8207bfd](https://github.com/leonardomso/gone/commit/8207bfd34f7bdfb8ec5303f63abcf2eb50956d55))
+
 ## [0.1.2](https://github.com/leonardomso/gone/compare/v0.1.1...v0.1.2) (2026-01-01)
 
 
