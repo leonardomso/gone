@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5](https://github.com/leonardomso/gone/compare/v0.1.4...v0.1.5) (2026-01-03)
+
+
+### Bug Fixes
+
+* **ci:** run GoReleaser directly after release-please creates a release ([4985fe0](https://github.com/leonardomso/gone/commit/4985fe0c5280eb0d6e0cfb95eaa616cd7b8b1dca))
+* **ci:** run GoReleaser directly after release-please creates a release ([dd122d7](https://github.com/leonardomso/gone/commit/dd122d7f983cd476e7ca3d36d2f8184516623183))
+
 ## [0.1.4](https://github.com/leonardomso/gone/compare/v0.1.3...v0.1.4) (2026-01-02)
 
 
