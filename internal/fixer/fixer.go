@@ -70,11 +70,12 @@ func (f *Fixer) FindFixes(results []checker.Result) []FileChanges {
 	urlToParserLink := f.buildURLToLinksMap()
 
 	for _, r := range results {
-		if !isFixableRedirect(r) {
+		fixableResult, ok := normalizeFixableResult(r)
+		if !ok {
 			continue
 		}
 
-		f.addOrUpdateFix(fileFixMap, r, urlToParserLink)
+		f.addOrUpdateFix(fileFixMap, fixableResult, urlToParserLink)
 	}
 
 	return f.buildFileChanges(fileFixMap)
@@ -95,6 +96,26 @@ func isFixableRedirect(r checker.Result) bool {
 		r.FinalStatus == 200 &&
 		r.FinalURL != "" &&
 		r.FinalURL != r.Link.URL
+}
+
+// normalizeFixableResult converts duplicate results back into fixable redirects
+// when their primary occurrence was a redirect to a healthy final URL.
+func normalizeFixableResult(r checker.Result) (checker.Result, bool) {
+	if isFixableRedirect(r) {
+		return r, true
+	}
+
+	if r.Status != checker.StatusDuplicate || r.DuplicateOf == nil {
+		return checker.Result{}, false
+	}
+
+	primary := *r.DuplicateOf
+	if !isFixableRedirect(primary) {
+		return checker.Result{}, false
+	}
+
+	primary.Link = r.Link
+	return primary, true
 }
 
 // addOrUpdateFix adds a new fix or increments occurrence count for existing fix.
