@@ -1,0 +1,6 @@
+# HTTP Scenarios
+
+[alive]({{ALIVE_URL}})
+[redirect]({{REDIRECT_URL}})
+[dead]({{DEAD_URL}})
+[error]({{ERROR_URL}})

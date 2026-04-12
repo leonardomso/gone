@@ -1,0 +1,7 @@
+site:
+  homepage: https://example.com
+  status: https://status.example.com
+  blog: https://example.com/blog
+links:
+  - https://example.com/releases
+  - https://example.com/changelog

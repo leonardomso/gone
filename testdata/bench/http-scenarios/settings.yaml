@@ -1,0 +1,5 @@
+links:
+  - "{{ALIVE_URL}}"
+  - "{{REDIRECT_URL}}"
+  - "{{DEAD_URL}}"
+  - "{{ERROR_URL}}"

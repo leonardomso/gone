@@ -1,0 +1,9 @@
+{
+  "servers": [
+    { "url": "https://api.example.com" },
+    { "url": "https://backup-api.example.com" }
+  ],
+  "externalDocs": {
+    "url": "https://example.com/api/docs"
+  }
+}

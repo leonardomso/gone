@@ -241,7 +241,7 @@ func TestFilterResultHelpers(t *testing.T) {
 	assert.Len(t, FilterResultsDead(results), 2)
 	assert.Len(t, FilterResultsDuplicates(results), 1)
 	assert.Len(t, FilterResultsAlive(results), 1)
-	assert.Equal(t, 5, len(filterResults(results)))
+	assert.Equal(t, 5, len(filterResults(results, checkRenderOptions{ShowWarnings: false})))
 }
 
 func TestCheckHelpersAndReportBuilding(t *testing.T) {
@@ -252,8 +252,8 @@ func TestCheckHelpersAndReportBuilding(t *testing.T) {
 	outputFile = ""
 	showIgnored = true
 	showWarnings = true
-
-	assert.NoError(t, validateCheckFlags())
+	runner := newCheckRunner(currentCheckOptions(), defaultCommandEnv(), IOStreams{})
+	assert.NoError(t, runner.validateFlags())
 	assert.Equal(t, ".", getPathArg(nil))
 	assert.Equal(t, "docs", getPathArg([]string{"docs"}))
 	assert.NoError(t, validateFileTypes([]string{"md", "json", "yaml", "toml", "xml"}))
@@ -285,18 +285,19 @@ func TestCheckHelpersAndReportBuilding(t *testing.T) {
 	require.True(t, urlFilter.ShouldIgnore("https://ignored.example/path", "README.md", 7))
 	assert.Equal(t, 1, getIgnoredCount(urlFilter))
 
-	report := buildReport([]string{"README.md"}, results, summary, urlFilter)
+	report := buildReport(time.Unix(123, 0), []string{"README.md"}, results, summary, urlFilter, runner.renderOptions())
 	require.NotNil(t, report)
 	assert.Equal(t, summary.Total+1, report.TotalLinks)
 	require.Len(t, report.Ignored, 1)
 	assert.Equal(t, "https://ignored.example/path", report.Ignored[0].URL)
 
 	assert.Equal(t, "301 → 200", formatRedirectChain(results[0]))
-	assert.Equal(t, "No warnings found.", getEmptyResultsMessage(checker.Summary{Alive: 2}))
+	assert.Equal(t, "No warnings found.", getEmptyResultsMessage(checker.Summary{Alive: 2}, runner.renderOptions()))
 
 	showWarnings = false
 	showDead = true
-	assert.Equal(t, "No dead links found.", getEmptyResultsMessage(checker.Summary{Alive: 2}))
+	runner = newCheckRunner(currentCheckOptions(), defaultCommandEnv(), IOStreams{})
+	assert.Equal(t, "No dead links found.", getEmptyResultsMessage(checker.Summary{Alive: 2}, runner.renderOptions()))
 }
 
 func TestValidateCheckFlags_InvalidCombinations(t *testing.T) {
@@ -305,13 +306,13 @@ func TestValidateCheckFlags_InvalidCombinations(t *testing.T) {
 
 	outputFormat = "json"
 	outputFile = "report.json"
-	err := validateCheckFlags()
+	err := newCheckRunner(currentCheckOptions(), defaultCommandEnv(), IOStreams{}).validateFlags()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mutually exclusive")
 
 	outputFile = ""
 	outputFormat = "invalid"
-	err = validateCheckFlags()
+	err = newCheckRunner(currentCheckOptions(), defaultCommandEnv(), IOStreams{}).validateFlags()
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "invalid format"))
 }

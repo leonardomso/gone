@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -141,6 +142,47 @@ func TestFindFiles(t *testing.T) {
 		files, err := FindFiles("testdata/multiple", []string{".md", ".txt"})
 		require.NoError(t, err)
 		assert.Len(t, files, 3) // 2 .md + 1 .txt
+	})
+
+	t.Run("SymlinkedDirectoryIsNotTraversed", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		docsDir := filepath.Join(tmpDir, "docs")
+		targetDir := t.TempDir()
+		require.NoError(t, os.MkdirAll(docsDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(docsDir, "root.md"), []byte("# Root"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(targetDir, "nested.md"), []byte("# Nested"), 0o644))
+
+		linkPath := filepath.Join(docsDir, "linked-dir")
+		require.NoError(t, os.Symlink(targetDir, linkPath))
+
+		files, err := FindFiles(tmpDir, []string{".md"})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "root.md")
+	})
+
+	t.Run("UnreadableDirectoryReturnsError", func(t *testing.T) {
+		t.Parallel()
+
+		if runtime.GOOS == "windows" {
+			t.Skip("permission test is not portable on Windows")
+		}
+
+		tmpDir := t.TempDir()
+		blockedDir := filepath.Join(tmpDir, "blocked")
+		require.NoError(t, os.MkdirAll(blockedDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "root.md"), []byte("# Root"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(blockedDir, "hidden.md"), []byte("# Hidden"), 0o644))
+		require.NoError(t, os.Chmod(blockedDir, 0))
+		t.Cleanup(func() {
+			_ = os.Chmod(blockedDir, 0o755)
+		})
+
+		files, err := FindFiles(tmpDir, []string{".md"})
+		assert.Error(t, err)
+		assert.Nil(t, files)
 	})
 }
 

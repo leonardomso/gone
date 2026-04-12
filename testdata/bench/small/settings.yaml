@@ -1,0 +1,6 @@
+service:
+  homepage: https://example.com
+  healthcheck: https://status.example.com/health
+links:
+  - https://example.com/changelog
+  - https://example.com/releases

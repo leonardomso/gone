@@ -1,0 +1,8 @@
+[services]
+docs = "https://docs.example.com"
+status = "https://status.example.com"
+cdn = "https://cdn.example.com"
+
+[integrations]
+pagerduty = "https://example.com/integrations/pagerduty"
+slack = "https://example.com/integrations/slack"

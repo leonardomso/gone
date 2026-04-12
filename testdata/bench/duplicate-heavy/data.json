@@ -1,0 +1,7 @@
+{
+  "primary": "https://repeat.example/resource",
+  "secondary": "https://repeat.example/resource",
+  "tertiary": "https://repeat.example/resource",
+  "ignored": "https://ignored.example/path",
+  "other": "https://unique.example/three"
+}
