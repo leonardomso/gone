@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/gobwas/glob"
 )
@@ -33,6 +34,7 @@ type Filter struct {
 
 	// Track ignored URLs for reporting
 	ignored []IgnoreReason
+	mu      sync.RWMutex
 }
 
 // compiledGlob holds a glob pattern and its original string for error reporting.
@@ -117,7 +119,7 @@ func (f *Filter) ShouldIgnore(rawURL, file string, line int) bool {
 
 	// Check domain first (O(1) lookup)
 	if reason, ok := f.matchesDomain(rawURL); ok {
-		f.ignored = append(f.ignored, IgnoreReason{
+		f.recordIgnored(IgnoreReason{
 			Type: "domain",
 			Rule: reason,
 			URL:  rawURL,
@@ -129,7 +131,7 @@ func (f *Filter) ShouldIgnore(rawURL, file string, line int) bool {
 
 	// Check glob patterns
 	if reason, ok := f.matchesGlob(rawURL); ok {
-		f.ignored = append(f.ignored, IgnoreReason{
+		f.recordIgnored(IgnoreReason{
 			Type: "pattern",
 			Rule: reason,
 			URL:  rawURL,
@@ -141,7 +143,7 @@ func (f *Filter) ShouldIgnore(rawURL, file string, line int) bool {
 
 	// Check regex patterns
 	if reason, ok := f.matchesRegex(rawURL); ok {
-		f.ignored = append(f.ignored, IgnoreReason{
+		f.recordIgnored(IgnoreReason{
 			Type: "regex",
 			Rule: reason,
 			URL:  rawURL,
@@ -152,6 +154,13 @@ func (f *Filter) ShouldIgnore(rawURL, file string, line int) bool {
 	}
 
 	return false
+}
+
+func (f *Filter) recordIgnored(reason IgnoreReason) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.ignored = append(f.ignored, reason)
 }
 
 // matchesDomain checks if the URL's domain matches any ignored domain.
@@ -214,6 +223,8 @@ func (f *Filter) IgnoredCount() int {
 	if f == nil {
 		return 0
 	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	return len(f.ignored)
 }
 
@@ -222,13 +233,20 @@ func (f *Filter) IgnoredURLs() []IgnoreReason {
 	if f == nil {
 		return nil
 	}
-	return f.ignored
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	ignored := make([]IgnoreReason, len(f.ignored))
+	copy(ignored, f.ignored)
+	return ignored
 }
 
 // Reset clears the list of ignored URLs.
 // Useful if reusing a filter for multiple checks.
 func (f *Filter) Reset() {
 	if f != nil {
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		f.ignored = f.ignored[:0]
 	}
 }

@@ -268,7 +268,8 @@ func parseAndFilterLinksWithConfig(
 	if len(parserLinks) == 0 {
 		perf.EndParse(0, 0, 0, 0)
 		effectiveShowStats := cfg.GetShowStats(showStats)
-		handleEmptyLinksWithStatsV2(files, useStructuredOutput, perf, effectiveShowStats)
+		effectiveFormat := cfg.GetOutputFormat(outputFormat)
+		handleEmptyLinksWithStatsV2(files, useStructuredOutput, perf, effectiveFormat, effectiveShowStats)
 		return nil, nil, true
 	}
 
@@ -289,7 +290,8 @@ func parseAndFilterLinksWithConfig(
 
 	if len(links) == 0 {
 		effectiveShowStats := cfg.GetShowStats(showStats)
-		handleAllFilteredWithStatsV2(files, useStructuredOutput, urlFilter, perf, effectiveShowStats)
+		effectiveFormat := cfg.GetOutputFormat(outputFormat)
+		handleAllFilteredWithStatsV2(files, useStructuredOutput, urlFilter, perf, effectiveFormat, effectiveShowStats)
 		return nil, urlFilter, true
 	}
 
@@ -357,10 +359,12 @@ func validateCheckFlags() error {
 }
 
 // handleEmptyLinksWithStatsV2 handles the case when no links are found, with config.
-func handleEmptyLinksWithStatsV2(files []string, useStructuredOutput bool, perf *stats.Stats, effectiveShowStats bool) {
+func handleEmptyLinksWithStatsV2(
+	files []string, useStructuredOutput bool, perf *stats.Stats, effectiveFormat string, effectiveShowStats bool,
+) {
 	switch {
 	case useStructuredOutput:
-		handleStructuredOutputWithStatsV2(files, nil, checker.Summary{}, nil, perf, outputFormat, effectiveShowStats)
+		handleStructuredOutputWithStatsV2(files, nil, checker.Summary{}, nil, perf, effectiveFormat, effectiveShowStats)
 	case outputFile != "":
 		handleFileOutputWithStatsV2(files, nil, checker.Summary{}, nil, perf, effectiveShowStats)
 	default:
@@ -374,12 +378,12 @@ func handleEmptyLinksWithStatsV2(files []string, useStructuredOutput bool, perf 
 // handleAllFilteredWithStatsV2 handles the case when all links were filtered out, with config.
 func handleAllFilteredWithStatsV2(
 	files []string, useStructuredOutput bool, urlFilter *filter.Filter,
-	perf *stats.Stats, effectiveShowStats bool,
+	perf *stats.Stats, effectiveFormat string, effectiveShowStats bool,
 ) {
 	switch {
 	case useStructuredOutput:
 		handleStructuredOutputWithStatsV2(
-			files, nil, checker.Summary{}, urlFilter, perf, outputFormat, effectiveShowStats,
+			files, nil, checker.Summary{}, urlFilter, perf, effectiveFormat, effectiveShowStats,
 		)
 	case outputFile != "":
 		handleFileOutputWithStatsV2(files, nil, checker.Summary{}, urlFilter, perf, effectiveShowStats)
