@@ -9,7 +9,9 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
+
+	"github.com/alitto/pond/v2"
+	"github.com/sourcegraph/conc"
 )
 
 // LinkType represents the type of link found in a file.
@@ -81,6 +83,8 @@ type fileResult struct {
 	links []Link
 	err   error
 }
+
+const parallelExtractThreshold = 2
 
 // =============================================================================
 // Shared Helper Functions (used by all parsers)
@@ -213,7 +217,7 @@ func ExtractLinksFromMultipleFilesWithRegistry(filePaths []string, strict bool) 
 	}
 
 	// For small number of files, use sequential processing
-	if len(supportedFiles) <= 2 {
+	if len(supportedFiles) <= parallelExtractThreshold {
 		return extractLinksSequentialWithRegistry(supportedFiles, strict)
 	}
 
@@ -245,42 +249,37 @@ func extractLinksSequentialWithRegistry(filePaths []string, strict bool) ([]Link
 func extractLinksParallelWithRegistry(filePaths []string, strict bool) ([]Link, error) {
 	numWorkers := min(runtime.NumCPU(), len(filePaths))
 
-	type job struct {
-		path   string
-		strict bool
-	}
+	pool := pond.NewResultPool[fileResult](numWorkers)
+	defer pool.StopAndWait()
 
-	jobs := make(chan job, len(filePaths))
-	results := make(chan fileResult, len(filePaths))
-
-	// Start workers
-	var wg sync.WaitGroup
-	for range numWorkers {
-		wg.Go(func() {
-			for j := range jobs {
-				links, err := ExtractLinksWithRegistry(j.path, j.strict)
-				results <- fileResult{links: links, err: err}
-			}
-		})
-	}
-
-	// Send jobs
+	futures := make([]pond.ResultTask[fileResult], 0, len(filePaths))
 	for _, path := range filePaths {
-		jobs <- job{path: path, strict: strict}
+		path := path
+		futures = append(futures, pool.Submit(func() fileResult {
+			links, err := ExtractLinksWithRegistry(path, strict)
+			return fileResult{links: links, err: err}
+		}))
 	}
-	close(jobs)
 
-	// Wait for workers and close results
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+	results := make(chan fileResult, len(futures))
+	var lifecycle conc.WaitGroup
+	lifecycle.Go(func() {
+		defer close(results)
+		for _, future := range futures {
+			result, err := future.Wait()
+			if err != nil {
+				results <- fileResult{err: err}
+				return
+			}
+			results <- result
+		}
+	})
 
-	// Collect results
 	allLinks := make([]Link, 0, len(filePaths)*30)
 	for result := range results {
 		if result.err != nil {
 			if strict {
+				lifecycle.Wait()
 				return nil, result.err
 			}
 			// In non-strict mode, skip files with errors
@@ -290,6 +289,8 @@ func extractLinksParallelWithRegistry(filePaths []string, strict bool) ([]Link, 
 			allLinks = append(allLinks, result.links...)
 		}
 	}
+
+	lifecycle.Wait()
 
 	return allLinks, nil
 }

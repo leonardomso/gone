@@ -75,6 +75,79 @@ ignore:
 	assert.Equal(t, "https://ignored.example/path", payload.Ignored[0].URL)
 }
 
+func TestCheck_WritesOutputFile(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "README.md"),
+		[]byte("[alive]("+server.URL+")\n"),
+		0o644,
+	))
+
+	reportPath := filepath.Join(tmpDir, "report.json")
+	result := runGone(t, tmpDir, "check", ".", "--output", reportPath, "--no-config")
+	require.Equal(t, 0, result.exitCode, result.stderr)
+	assert.Contains(t, result.stdout, "Wrote report to")
+
+	data, err := os.ReadFile(reportPath)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(data, &payload))
+	assert.Equal(t, float64(1), payload["total_links"])
+	assert.Equal(t, float64(1), payload["unique_urls"])
+}
+
+func TestCheck_CLIFormatOverridesConfigFormat(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".gonerc.yaml"), []byte("output:\n  format: yaml\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# No links here\n"), 0o644))
+
+	result := runGone(t, tmpDir, "check", ".", "--format=json")
+	require.Equal(t, 0, result.exitCode, result.stderr)
+	require.NotEmpty(t, strings.TrimSpace(result.stdout))
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result.stdout), &payload))
+	assert.Equal(t, float64(1), payload["total_files"])
+}
+
+func TestCheck_StrictModeParseFailure(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "broken.json"), []byte("{not-json"), 0o644))
+
+	result := runGone(t, tmpDir, "check", ".", "--types=json", "--strict", "--no-config")
+	require.Equal(t, 1, result.exitCode)
+	assert.Contains(t, result.stderr, "Error parsing files")
+	assert.Contains(t, result.stderr, "broken.json")
+}
+
+func TestCheck_TextOutput_WhenAllLinksIgnored(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "README.md"),
+		[]byte("[ignored](https://ignored.example/path)\n"),
+		0o644,
+	))
+
+	result := runGone(t, tmpDir, "check", ".", "--ignore-domain=ignored.example", "--show-ignored", "--no-config")
+	require.Equal(t, 0, result.exitCode, result.stderr)
+	assert.Contains(t, result.stdout, "All links were ignored by filter rules.")
+	assert.Contains(t, result.stdout, "=== Ignored URLs (1) ===")
+}
+
 func TestFix_Yes_UpdatesRedirectsAcrossFileTypes(t *testing.T) {
 	t.Parallel()
 
@@ -122,6 +195,40 @@ func TestFix_Yes_UpdatesRedirectsAcrossFileTypes(t *testing.T) {
 	assert.Contains(t, string(jsonContent), finalURL)
 }
 
+func TestFix_InteractiveScriptedInput(t *testing.T) {
+	t.Parallel()
+
+	finalURL := ""
+	redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/old":
+			http.Redirect(w, r, finalURL, http.StatusMovedPermanently)
+		case "/new":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer redirectServer.Close()
+
+	finalURL = redirectServer.URL + "/new"
+	oldURL := redirectServer.URL + "/old"
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "README.md")
+	require.NoError(t, os.WriteFile(filePath, []byte("[docs]("+oldURL+")\n"), 0o644))
+
+	result := runGoneWithInput(t, tmpDir, "?\ny\n", "fix", ".", "--types=md", "--no-config")
+	require.Equal(t, 0, result.exitCode, result.stderr)
+	assert.Contains(t, result.stdout, "Interactive mode options:")
+	assert.Contains(t, result.stdout, "Fixed 1 redirect(s) in README.md")
+
+	content, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(content), oldURL)
+	assert.Contains(t, string(content), finalURL)
+}
+
 type cliResult struct {
 	stdout   string
 	stderr   string
@@ -135,6 +242,22 @@ func runGone(t *testing.T, dir string, args ...string) cliResult {
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
+	return cliResultFromOutput(t, output, err)
+}
+
+func runGoneWithInput(t *testing.T, dir, input string, args ...string) cliResult {
+	t.Helper()
+
+	binaryPath := buildGoneBinary(t)
+	cmd := exec.Command(binaryPath, args...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(input)
+	output, err := cmd.CombinedOutput()
+	return cliResultFromOutput(t, output, err)
+}
+
+func cliResultFromOutput(t *testing.T, output []byte, err error) cliResult {
+	t.Helper()
 
 	result := cliResult{
 		stdout:   string(output),

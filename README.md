@@ -424,6 +424,34 @@ jobs:
           path: report.junit.xml
 ```
 
+## Benchmarking
+
+Benchmark fixtures live under `testdata/bench` and cover:
+
+- small, medium, and large mixed-format trees
+- duplicate-heavy URL sets
+- redirect-heavy and error-heavy HTTP scenarios
+
+Use the end-to-end harness before changing concurrency or hot-path code:
+
+```bash
+# Capture a baseline
+go test -run '^$' -bench 'BenchmarkPipeline_' ./cmd | tee /tmp/gone-bench-before.txt
+
+# Compare parser and checker micro-benchmarks too
+go test -run '^$' -bench . ./internal/parser ./internal/checker ./cmd | tee /tmp/gone-bench-current.txt
+
+# After refactors, compare runs with benchstat
+benchstat /tmp/gone-bench-before.txt /tmp/gone-bench-after.txt
+```
+
+Guidelines:
+
+- Run benchmarks on an otherwise idle machine when possible.
+- Keep `-count` consistent across before/after runs if you use it.
+- Treat neutral-or-better results on the medium and large fixtures as the gate for concurrency refactors.
+- Prefer changing one hot path at a time so regressions are easy to attribute.
+
 ## Exit Codes
 
 | Code | Meaning |

@@ -1,0 +1,6 @@
+docs:
+  guide: https://example.com/guide
+  migration: https://example.com/migration
+  security: https://example.com/security
+support:
+  email: https://example.com/support

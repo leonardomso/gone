@@ -1,0 +1,6 @@
+{
+  "homepage": "https://example.com",
+  "login": "https://example.com/login",
+  "logout": "https://example.com/logout",
+  "dashboard": "https://example.com/dashboard"
+}

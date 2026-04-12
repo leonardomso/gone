@@ -1,0 +1,5 @@
+<events>
+  <event href="https://example.com/events/launch" />
+  <event href="https://example.com/events/summit" />
+  <event href="https://example.com/events/webinar" />
+</events>
