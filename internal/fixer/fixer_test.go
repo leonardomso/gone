@@ -212,6 +212,34 @@ func TestFixer_FindFixes_DuplicateURLsInSameFile(t *testing.T) {
 	assert.Equal(t, 2, changes[0].TotalFixes)
 }
 
+func TestFixer_FindFixes_DuplicateResultsAcrossFiles(t *testing.T) {
+	t.Parallel()
+
+	primary := checker.Result{
+		Link:        checker.Link{URL: "https://old.com", FilePath: "a.md", Line: 10},
+		Status:      checker.StatusRedirect,
+		FinalURL:    "https://new.com",
+		FinalStatus: 200,
+	}
+
+	results := []checker.Result{
+		primary,
+		{
+			Link:        checker.Link{URL: "https://old.com", FilePath: "b.json", Line: 5},
+			Status:      checker.StatusDuplicate,
+			DuplicateOf: &primary,
+		},
+	}
+
+	f := New()
+	changes := f.FindFixes(results)
+
+	require.Len(t, changes, 2)
+	assert.Equal(t, "a.md", changes[0].FilePath)
+	assert.Equal(t, "b.json", changes[1].FilePath)
+	assert.Equal(t, "https://new.com", changes[1].Fixes[0].NewURL)
+}
+
 func TestFixer_FindFixes_SortedByLine(t *testing.T) {
 	t.Parallel()
 

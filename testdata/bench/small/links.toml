@@ -1,0 +1,5 @@
+homepage = "https://example.com"
+guide = "https://example.com/guide"
+
+[support]
+faq = "https://example.com/faq"

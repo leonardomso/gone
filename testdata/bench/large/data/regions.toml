@@ -1,0 +1,6 @@
+us = "https://us.example.com"
+eu = "https://eu.example.com"
+apac = "https://apac.example.com"
+
+[fallback]
+global = "https://example.com/global"

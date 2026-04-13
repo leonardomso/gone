@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/leonardomso/gone/internal/checker"
@@ -11,7 +12,7 @@ import (
 
 // printProgressMessage displays the scanning progress with ignore info.
 // Shows the total links found, unique URLs being checked, and counts for duplicates/ignored.
-func printProgressMessage(total, afterFilter, unique, duplicates, ignored int) {
+func printProgressMessage(w io.Writer, total, afterFilter, unique, duplicates, ignored int) {
 	var parts []string
 
 	if duplicates > 0 {
@@ -22,131 +23,131 @@ func printProgressMessage(total, afterFilter, unique, duplicates, ignored int) {
 	}
 
 	if len(parts) > 0 {
-		fmt.Printf("Found %d link(s), checking %d unique URLs (%s)...\n",
+		writef(w, "Found %d link(s), checking %d unique URLs (%s)...\n",
 			total, unique, strings.Join(parts, ", "))
 	} else {
-		fmt.Printf("Found %d link(s), checking...\n", afterFilter)
+		writef(w, "Found %d link(s), checking...\n", afterFilter)
 	}
 }
 
 // printSection prints a titled section of results if any exist.
 // Uses the provided printer function to format each individual result.
-func printSection(title string, results []checker.Result, printer func(checker.Result)) {
+func printSection(w io.Writer, title string, results []checker.Result, printer func(io.Writer, checker.Result)) {
 	if len(results) == 0 {
 		return
 	}
-	fmt.Printf("=== %s (%d) ===\n\n", title, len(results))
+	writef(w, "=== %s (%d) ===\n\n", title, len(results))
 	for _, r := range results {
-		printer(r)
+		printer(w, r)
 	}
-	fmt.Println()
+	writeln(w)
 }
 
 // printResult dispatches to the appropriate printer based on result status.
-func printResult(r checker.Result) {
+func printResult(w io.Writer, r checker.Result) {
 	switch r.Status {
 	case checker.StatusAlive:
-		printAliveResult(r)
+		printAliveResult(w, r)
 	case checker.StatusRedirect, checker.StatusBlocked:
-		printWarningResult(r)
+		printWarningResult(w, r)
 	case checker.StatusDead, checker.StatusError:
-		printDeadResult(r)
+		printDeadResult(w, r)
 	case checker.StatusDuplicate:
-		printDuplicateResult(r)
+		printDuplicateResult(w, r)
 	}
 }
 
 // printAliveResult formats and prints a result with alive status.
-func printAliveResult(r checker.Result) {
-	fmt.Printf("  [%d] %s\n", r.StatusCode, r.Link.URL)
+func printAliveResult(w io.Writer, r checker.Result) {
+	writef(w, "  [%d] %s\n", r.StatusCode, r.Link.URL)
 	if text := helpers.TruncateText(r.Link.Text, 50); text != "" {
-		fmt.Printf("       Text: %q\n", text)
+		writef(w, "       Text: %q\n", text)
 	}
-	fmt.Printf("       File: %s", r.Link.FilePath)
+	writef(w, "       File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
+		writef(w, ":%d", r.Link.Line)
 	}
-	fmt.Println()
-	fmt.Println()
+	writeln(w)
+	writeln(w)
 }
 
 // printWarningResult formats and prints a result with warning status (redirect or blocked).
-func printWarningResult(r checker.Result) {
-	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
+func printWarningResult(w io.Writer, r checker.Result) {
+	writef(w, "  %s %s\n", r.StatusDisplay(), r.Link.URL)
 
 	if text := helpers.TruncateText(r.Link.Text, 50); text != "" {
-		fmt.Printf("       Text: %q\n", text)
+		writef(w, "       Text: %q\n", text)
 	}
 
 	if r.Status == checker.StatusRedirect && len(r.RedirectChain) > 0 {
-		fmt.Printf("       Chain: %s\n", formatRedirectChain(r))
-		fmt.Printf("       Final: %s\n", r.FinalURL)
+		writef(w, "       Chain: %s\n", formatRedirectChain(r))
+		writef(w, "       Final: %s\n", r.FinalURL)
 	}
 
-	fmt.Printf("       File: %s", r.Link.FilePath)
+	writef(w, "       File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
+		writef(w, ":%d", r.Link.Line)
 	}
-	fmt.Println()
-	fmt.Printf("       Note: %s\n\n", r.Status.Description())
+	writeln(w)
+	writef(w, "       Note: %s\n\n", r.Status.Description())
 }
 
 // printDeadResult formats and prints a result with dead or error status.
-func printDeadResult(r checker.Result) {
-	fmt.Printf("  %s %s\n", r.StatusDisplay(), r.Link.URL)
+func printDeadResult(w io.Writer, r checker.Result) {
+	writef(w, "  %s %s\n", r.StatusDisplay(), r.Link.URL)
 	if text := helpers.TruncateText(r.Link.Text, 50); text != "" {
-		fmt.Printf("       Text: %q\n", text)
+		writef(w, "       Text: %q\n", text)
 	}
-	fmt.Printf("       File: %s", r.Link.FilePath)
+	writef(w, "       File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
+		writef(w, ":%d", r.Link.Line)
 	}
-	fmt.Println()
+	writeln(w)
 
 	if r.Error != "" {
-		fmt.Printf("       Error: %s\n", r.Error)
+		writef(w, "       Error: %s\n", r.Error)
 	}
-	fmt.Println()
+	writeln(w)
 }
 
 // printDuplicateResult formats and prints a result that is a duplicate of another link.
-func printDuplicateResult(r checker.Result) {
-	fmt.Printf("  [DUPLICATE] %s\n", r.Link.URL)
+func printDuplicateResult(w io.Writer, r checker.Result) {
+	writef(w, "  [DUPLICATE] %s\n", r.Link.URL)
 	if text := helpers.TruncateText(r.Link.Text, 50); text != "" {
-		fmt.Printf("              Text: %q\n", text)
+		writef(w, "              Text: %q\n", text)
 	}
-	fmt.Printf("              File: %s", r.Link.FilePath)
+	writef(w, "              File: %s", r.Link.FilePath)
 	if r.Link.Line > 0 {
-		fmt.Printf(":%d", r.Link.Line)
+		writef(w, ":%d", r.Link.Line)
 	}
-	fmt.Println()
+	writeln(w)
 
 	if r.DuplicateOf != nil {
-		fmt.Printf("              Same as: %s", r.DuplicateOf.Link.FilePath)
+		writef(w, "              Same as: %s", r.DuplicateOf.Link.FilePath)
 		if r.DuplicateOf.Link.Line > 0 {
-			fmt.Printf(":%d", r.DuplicateOf.Link.Line)
+			writef(w, ":%d", r.DuplicateOf.Link.Line)
 		}
-		fmt.Printf(" → Status: %s\n", r.DuplicateOf.Status.Label())
+		writef(w, " → Status: %s\n", r.DuplicateOf.Status.Label())
 	}
-	fmt.Println()
+	writeln(w)
 }
 
 // printIgnoredURLs displays the list of URLs that were ignored by filter rules.
-func printIgnoredURLs(urlFilter *filter.Filter) {
+func printIgnoredURLs(w io.Writer, urlFilter *filter.Filter) {
 	ignored := urlFilter.IgnoredURLs()
 	if len(ignored) == 0 {
 		return
 	}
 
-	fmt.Printf("\n=== Ignored URLs (%d) ===\n\n", len(ignored))
+	writef(w, "\n=== Ignored URLs (%d) ===\n\n", len(ignored))
 	for _, ig := range ignored {
-		fmt.Printf("  [IGNORED] %s\n", ig.URL)
-		fmt.Printf("            File: %s", ig.File)
+		writef(w, "  [IGNORED] %s\n", ig.URL)
+		writef(w, "            File: %s", ig.File)
 		if ig.Line > 0 {
-			fmt.Printf(":%d", ig.Line)
+			writef(w, ":%d", ig.Line)
 		}
-		fmt.Println()
-		fmt.Printf("            Reason: %s %q\n\n", ig.Type, ig.Rule)
+		writeln(w)
+		writef(w, "            Reason: %s %q\n\n", ig.Type, ig.Rule)
 	}
 }
 

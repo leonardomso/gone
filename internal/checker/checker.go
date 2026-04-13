@@ -13,8 +13,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
+
+	"github.com/alitto/pond/v2"
+	"github.com/sourcegraph/conc"
 )
 
 // Checker performs concurrent link checking with configurable options.
@@ -90,103 +92,76 @@ func (c *Checker) CheckAll(links []Link) []Result {
 // The returned channel will be closed when all links have been checked.
 // Use the context to cancel ongoing checks.
 func (c *Checker) Check(ctx context.Context, links []Link) <-chan Result {
-	results := make(chan Result, c.opts.Concurrency)
+	results := make(chan Result, max(c.opts.Concurrency, 1))
 
 	go func() {
 		defer close(results)
 
-		// Deduplicate: group links by URL
-		// Pre-allocate with estimated capacity (assume ~70% unique URLs)
-		urlToLinks := make(map[string][]Link, len(links)*7/10)
-		urlOrder := make([]string, 0, len(links)*7/10) // Preserve order for deterministic output
-		for _, link := range links {
-			if _, exists := urlToLinks[link.URL]; !exists {
-				urlOrder = append(urlOrder, link.URL)
-			}
-			urlToLinks[link.URL] = append(urlToLinks[link.URL], link)
-		}
+		urlToLinks, uniqueLinks := deduplicateLinks(links)
+		primaryChan := make(chan Result, max(c.opts.Concurrency, 1))
+		pool := pond.NewPool(max(c.opts.Concurrency, 1), pond.WithContext(ctx))
 
-		// Create job queue with unique URLs only (first occurrence of each)
-		uniqueLinks := make([]Link, 0, len(urlOrder))
-		for _, u := range urlOrder {
-			uniqueLinks = append(uniqueLinks, urlToLinks[u][0])
-		}
+		var lifecycle conc.WaitGroup
+		lifecycle.Go(func() {
+			defer close(primaryChan)
 
-		// Store primary results for duplicates
-		primaryResults := make(map[string]*Result, len(urlOrder))
-		var resultsMu sync.Mutex
+			for _, link := range uniqueLinks {
+				if ctx.Err() != nil {
+					break
+				}
 
-		// Channel for primary results from workers
-		primaryChan := make(chan Result, c.opts.Concurrency)
-
-		// Start worker pool
-		var wg sync.WaitGroup
-		jobs := make(chan Link, len(uniqueLinks))
-
-		for range c.opts.Concurrency {
-			wg.Go(func() {
-				for link := range jobs {
-					select {
-					case <-ctx.Done():
-						primaryChan <- Result{
-							Link:   link,
-							Status: StatusError,
-							Error:  "check canceled",
-						}
-					default:
-						result := c.checkWithRetry(ctx, link)
-						primaryChan <- result
+				link := link
+				if err := pool.Go(func() {
+					if ctx.Err() != nil {
+						return
+					}
+					primaryChan <- c.checkWithRetry(ctx, link)
+				}); err != nil {
+					if ctx.Err() != nil || errors.Is(err, pond.ErrPoolStopped) {
+						break
+					}
+					primaryChan <- Result{
+						Link:   link,
+						Status: StatusError,
+						Error:  err.Error(),
 					}
 				}
-			})
-		}
-
-		// Send jobs to workers
-		go func() {
-		sendLoop:
-			for _, link := range uniqueLinks {
-				select {
-				case jobs <- link:
-				case <-ctx.Done():
-					break sendLoop
-				}
 			}
-			close(jobs)
-		}()
 
-		// Collect primary results and emit all occurrences
-		go func() {
-			wg.Wait()
-			close(primaryChan)
-		}()
+			pool.StopAndWait()
+		})
 
 		for result := range primaryChan {
-			// Store as primary result
-			resultsMu.Lock()
-			resultCopy := result
-			primaryResults[result.Link.URL] = &resultCopy
-			resultsMu.Unlock()
-
-			// Get all occurrences of this URL
 			occurrences := urlToLinks[result.Link.URL]
-
-			// Emit primary result (first occurrence)
 			results <- result
 
-			// Emit duplicate results for additional occurrences
+			resultCopy := result
 			for i := 1; i < len(occurrences); i++ {
-				dupResult := Result{
+				results <- Result{
 					Link:        occurrences[i],
 					StatusCode:  result.StatusCode,
 					Status:      StatusDuplicate,
 					DuplicateOf: &resultCopy,
 				}
-				results <- dupResult
 			}
 		}
+
+		lifecycle.Wait()
 	}()
 
 	return results
+}
+
+func deduplicateLinks(links []Link) (map[string][]Link, []Link) {
+	urlToLinks := make(map[string][]Link, len(links)*7/10)
+	uniqueLinks := make([]Link, 0, len(links)*7/10)
+	for _, link := range links {
+		if _, exists := urlToLinks[link.URL]; !exists {
+			uniqueLinks = append(uniqueLinks, link)
+		}
+		urlToLinks[link.URL] = append(urlToLinks[link.URL], link)
+	}
+	return urlToLinks, uniqueLinks
 }
 
 // checkWithRetry attempts to check a link with exponential backoff retry.

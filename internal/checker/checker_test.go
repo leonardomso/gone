@@ -588,9 +588,9 @@ func TestChecker_CheckAll_500ServerError(t *testing.T) {
 func TestChecker_CheckAll_HeadFallbackToGet(t *testing.T) {
 	t.Parallel()
 
-	var requestCount int32
+	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&requestCount, 1)
+		requestCount.Add(1)
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -606,7 +606,7 @@ func TestChecker_CheckAll_HeadFallbackToGet(t *testing.T) {
 
 	require.Len(t, results, 1)
 	assert.Equal(t, StatusAlive, results[0].Status)
-	assert.GreaterOrEqual(t, atomic.LoadInt32(&requestCount), int32(2)) // HEAD then GET
+	assert.GreaterOrEqual(t, requestCount.Load(), int32(2)) // HEAD then GET
 }
 
 func TestChecker_CheckAll_Redirect301(t *testing.T) {
@@ -839,9 +839,9 @@ func TestChecker_CheckAll_MultipleDifferentURLs(t *testing.T) {
 func TestChecker_CheckAll_RetryOn5xx(t *testing.T) {
 	t.Parallel()
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		count := atomic.AddInt32(&attempts, 1)
+		count := attempts.Add(1)
 		if count < 3 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -857,15 +857,15 @@ func TestChecker_CheckAll_RetryOn5xx(t *testing.T) {
 
 	require.Len(t, results, 1)
 	assert.Equal(t, StatusAlive, results[0].Status)
-	assert.GreaterOrEqual(t, atomic.LoadInt32(&attempts), int32(3))
+	assert.GreaterOrEqual(t, attempts.Load(), int32(3))
 }
 
 func TestChecker_CheckAll_RetryOn429(t *testing.T) {
 	t.Parallel()
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		count := atomic.AddInt32(&attempts, 1)
+		count := attempts.Add(1)
 		if count < 2 {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
@@ -886,9 +886,9 @@ func TestChecker_CheckAll_RetryOn429(t *testing.T) {
 func TestChecker_CheckAll_NoRetryOn404(t *testing.T) {
 	t.Parallel()
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&attempts, 1)
+		attempts.Add(1)
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -900,7 +900,7 @@ func TestChecker_CheckAll_NoRetryOn404(t *testing.T) {
 
 	require.Len(t, results, 1)
 	assert.Equal(t, StatusDead, results[0].Status)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&attempts)) // No retries for 404
+	assert.Equal(t, int32(1), attempts.Load()) // No retries for 404
 }
 
 func TestChecker_Check_ContextCanceled(t *testing.T) {
@@ -1020,19 +1020,19 @@ func TestChecker_CheckAll_ConnectionRefused(t *testing.T) {
 func TestChecker_CheckAll_Concurrency(t *testing.T) {
 	t.Parallel()
 
-	var activeRequests int32
-	var maxConcurrent int32
+	var activeRequests atomic.Int32
+	var maxConcurrent atomic.Int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		current := atomic.AddInt32(&activeRequests, 1)
+		current := activeRequests.Add(1)
 		for {
-			old := atomic.LoadInt32(&maxConcurrent)
-			if current <= old || atomic.CompareAndSwapInt32(&maxConcurrent, old, current) {
+			old := maxConcurrent.Load()
+			if current <= old || maxConcurrent.CompareAndSwap(old, current) {
 				break
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
-		atomic.AddInt32(&activeRequests, -1)
+		activeRequests.Add(-1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -1047,7 +1047,7 @@ func TestChecker_CheckAll_Concurrency(t *testing.T) {
 	results := checker.CheckAll(links)
 
 	assert.Len(t, results, 20)
-	assert.LessOrEqual(t, atomic.LoadInt32(&maxConcurrent), int32(5))
+	assert.LessOrEqual(t, maxConcurrent.Load(), int32(5))
 }
 
 // =============================================================================
@@ -1291,9 +1291,9 @@ func TestChecker_CheckAll_RedirectTo403StillBlocked(t *testing.T) {
 func TestChecker_CheckAll_501NotImplemented(t *testing.T) {
 	t.Parallel()
 
-	var requestCount int32
+	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&requestCount, 1)
+		requestCount.Add(1)
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusNotImplemented) // 501
 			return
@@ -1310,7 +1310,7 @@ func TestChecker_CheckAll_501NotImplemented(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, StatusAlive, results[0].Status)
 	// Should have made at least 2 requests (HEAD then GET fallback)
-	assert.GreaterOrEqual(t, atomic.LoadInt32(&requestCount), int32(2))
+	assert.GreaterOrEqual(t, requestCount.Load(), int32(2))
 }
 
 func TestChecker_CheckAll_RedirectWithRelativeLocation(t *testing.T) {

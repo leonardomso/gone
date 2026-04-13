@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestFindFiles(t *testing.T) {
 		assert.Len(t, files, 2)
 
 		// Should find both root.md and nested.md
-		var names []string
+		names := make([]string, 0, len(files))
 		for _, f := range files {
 			names = append(names, filepath.Base(f))
 		}
@@ -75,7 +76,7 @@ func TestFindFiles(t *testing.T) {
 		assert.Len(t, files, 3)
 
 		// Should find .md, .MD, and .Md
-		var names []string
+		names := make([]string, 0, len(files))
 		for _, f := range files {
 			names = append(names, filepath.Base(f))
 		}
@@ -142,6 +143,47 @@ func TestFindFiles(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, files, 3) // 2 .md + 1 .txt
 	})
+
+	t.Run("SymlinkedDirectoryIsNotTraversed", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		docsDir := filepath.Join(tmpDir, "docs")
+		targetDir := t.TempDir()
+		require.NoError(t, os.MkdirAll(docsDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(docsDir, "root.md"), []byte("# Root"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(targetDir, "nested.md"), []byte("# Nested"), 0o644))
+
+		linkPath := filepath.Join(docsDir, "linked-dir")
+		require.NoError(t, os.Symlink(targetDir, linkPath))
+
+		files, err := FindFiles(tmpDir, []string{".md"})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "root.md")
+	})
+
+	t.Run("UnreadableDirectoryReturnsError", func(t *testing.T) {
+		t.Parallel()
+
+		if runtime.GOOS == "windows" {
+			t.Skip("permission test is not portable on Windows")
+		}
+
+		tmpDir := t.TempDir()
+		blockedDir := filepath.Join(tmpDir, "blocked")
+		require.NoError(t, os.MkdirAll(blockedDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "root.md"), []byte("# Root"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(blockedDir, "hidden.md"), []byte("# Hidden"), 0o644))
+		require.NoError(t, os.Chmod(blockedDir, 0))
+		t.Cleanup(func() {
+			_ = os.Chmod(blockedDir, 0o755)
+		})
+
+		files, err := FindFiles(tmpDir, []string{".md"})
+		assert.Error(t, err)
+		assert.Nil(t, files)
+	})
 }
 
 func TestFindFilesByTypes(t *testing.T) {
@@ -155,7 +197,7 @@ func TestFindFilesByTypes(t *testing.T) {
 		assert.Len(t, files, 3)
 
 		// Collect extensions found
-		var extensions []string
+		extensions := make([]string, 0, len(files))
 		for _, f := range files {
 			extensions = append(extensions, filepath.Ext(f))
 		}
@@ -176,7 +218,7 @@ func TestFindFilesByTypes(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, files, 2)
 
-		var extensions []string
+		extensions := make([]string, 0, len(files))
 		for _, f := range files {
 			extensions = append(extensions, filepath.Ext(f))
 		}

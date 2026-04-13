@@ -1,0 +1,6 @@
+{
+  "users": "https://api.example.com/users",
+  "projects": "https://api.example.com/projects",
+  "search": "https://api.example.com/search",
+  "health": "https://api.example.com/health"
+}

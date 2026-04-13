@@ -1,0 +1,6 @@
+slack = "https://example.com/integrations/slack"
+github = "https://example.com/integrations/github"
+
+[providers]
+docker = "https://example.com/integrations/docker"
+kubernetes = "https://example.com/integrations/kubernetes"
