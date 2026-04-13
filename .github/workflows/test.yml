@@ -27,4 +27,12 @@ jobs:
         run: go test -tags=integration ./cmd
 
       - name: Run bounded fuzz jobs
-        run: go test ./internal/parser/... -run=^$ -fuzz=Fuzz -fuzztime=5s
+        run: |
+          set -euo pipefail
+          go test ./internal/parser -run=^$ -fuzz=FuzzCleanURLTrailing -fuzztime=5s
+          go test ./internal/parser -run=^$ -fuzz=FuzzBuildLineIndexAndOffsetToLineCol -fuzztime=5s
+          go test ./internal/parser/json -run=^$ -fuzz=FuzzJSONParserValidateAndParse -fuzztime=5s
+          go test ./internal/parser/markdown -run=^$ -fuzz=FuzzExtractLinksFromContent -fuzztime=5s
+          go test ./internal/parser/toml -run=^$ -fuzz=FuzzTOMLParserValidateAndParse -fuzztime=5s
+          go test ./internal/parser/xml -run=^$ -fuzz=FuzzXMLParserValidateAndParse -fuzztime=5s
+          go test ./internal/parser/yaml -run=^$ -fuzz=FuzzYAMLParserValidateAndParse -fuzztime=5s
