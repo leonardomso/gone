@@ -243,27 +243,26 @@ func (*Fixer) Preview(changes []FileChanges) string {
 		totalFixes += fc.TotalFixes
 	}
 
-	b.WriteString(fmt.Sprintf("Found %d fixable redirect(s) across %d file(s):\n\n",
-		totalFixes, len(changes)))
+	appendFixf(&b, "Found %d fixable redirect(s) across %d file(s):\n\n", totalFixes, len(changes))
 
 	for _, fc := range changes {
-		b.WriteString(fmt.Sprintf("%s (%d fix(es))\n", fc.FilePath, fc.TotalFixes))
+		appendFixf(&b, "%s (%d fix(es))\n", fc.FilePath, fc.TotalFixes)
 
 		for _, fix := range fc.Fixes {
 			lineInfo := fmt.Sprintf("  Line %d: ", fix.Line)
 
 			if fix.IsRefDef {
-				b.WriteString(fmt.Sprintf("%s[%s] %s\n", lineInfo, fix.RefName, fix.OldURL))
-				b.WriteString(fmt.Sprintf("          -> %s", fix.NewURL))
+				appendFixf(&b, "%s[%s] %s\n", lineInfo, fix.RefName, fix.OldURL)
+				appendFixf(&b, "          -> %s", fix.NewURL)
 				if fix.RefUsages > 0 {
-					b.WriteString(fmt.Sprintf(" (used %d time(s))", fix.RefUsages))
+					appendFixf(&b, " (used %d time(s))", fix.RefUsages)
 				}
 				b.WriteString("\n")
 			} else {
-				b.WriteString(fmt.Sprintf("%s%s\n", lineInfo, truncateURL(fix.OldURL, 60)))
-				b.WriteString(fmt.Sprintf("          -> %s", truncateURL(fix.NewURL, 60)))
+				appendFixf(&b, "%s%s\n", lineInfo, truncateURL(fix.OldURL, 60))
+				appendFixf(&b, "          -> %s", truncateURL(fix.NewURL, 60))
 				if fix.Occurrences > 1 {
-					b.WriteString(fmt.Sprintf(" (%d occurrence(s))", fix.Occurrences))
+					appendFixf(&b, " (%d occurrence(s))", fix.Occurrences)
 				}
 				b.WriteString("\n")
 			}
@@ -337,6 +336,7 @@ func (*Fixer) ApplyToFile(fc FileChanges) (*FixResult, error) {
 	}
 
 	// Write modified content back to file
+	//nolint:gosec // fc.FilePath originates from files already scanned in the current workspace
 	err = os.WriteFile(fc.FilePath, []byte(modifiedContent), 0o600)
 	if err != nil {
 		result.Error = fmt.Errorf("writing file: %w", err)
@@ -382,16 +382,16 @@ func Summary(results []FixResult) string {
 		return "No changes made."
 	}
 
-	b.WriteString(fmt.Sprintf("Fixed %d redirect(s) across %d file(s).\n", totalApplied, filesModified))
+	appendFixf(&b, "Fixed %d redirect(s) across %d file(s).\n", totalApplied, filesModified)
 
 	if totalSkipped > 0 {
-		b.WriteString(fmt.Sprintf("Skipped %d (URL not found in file).\n", totalSkipped))
+		appendFixf(&b, "Skipped %d (URL not found in file).\n", totalSkipped)
 	}
 
 	if len(errors) > 0 {
 		b.WriteString("\nErrors:\n")
 		for _, e := range errors {
-			b.WriteString(fmt.Sprintf("  %s\n", e))
+			appendFixf(&b, "  %s\n", e)
 		}
 	}
 
@@ -416,7 +416,7 @@ func DetailedSummary(results []FixResult) string {
 		return "No changes made."
 	}
 
-	b.WriteString(fmt.Sprintf("Fixed %d redirect(s) across %d file(s):\n\n", totalApplied, filesModified))
+	appendFixf(&b, "Fixed %d redirect(s) across %d file(s):\n\n", totalApplied, filesModified)
 
 	for _, r := range results {
 		if r.Applied == 0 {
@@ -424,11 +424,15 @@ func DetailedSummary(results []FixResult) string {
 		}
 
 		for _, change := range r.ChangedURLs {
-			b.WriteString(fmt.Sprintf("  %s:%d\n", r.FilePath, change.Line))
-			b.WriteString(fmt.Sprintf("    %s\n", truncateURL(change.OldURL, 70)))
-			b.WriteString(fmt.Sprintf("    -> %s\n", truncateURL(change.NewURL, 70)))
+			appendFixf(&b, "  %s:%d\n", r.FilePath, change.Line)
+			appendFixf(&b, "    %s\n", truncateURL(change.OldURL, 70))
+			appendFixf(&b, "    -> %s\n", truncateURL(change.NewURL, 70))
 		}
 	}
 
 	return b.String()
+}
+
+func appendFixf(b *strings.Builder, format string, args ...any) {
+	_, _ = fmt.Fprintf(b, format, args...)
 }

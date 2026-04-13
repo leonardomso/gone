@@ -89,6 +89,7 @@ type Model struct {
 	strictMode  bool
 	scanInclude []string
 	scanExclude []string
+	checkerOpts checker.Options
 
 	// Data
 	files   []string
@@ -129,12 +130,17 @@ type Model struct {
 func New(
 	path string, urlFilter *filter.Filter, fileTypes []string,
 	strictMode bool, scanInclude, scanExclude []string,
+	checkerOpts ...checker.Options,
 ) Model {
 	if path == "" {
 		path = "."
 	}
 	if len(fileTypes) == 0 {
 		fileTypes = []string{"md"}
+	}
+	opts := checker.DefaultOptions()
+	if len(checkerOpts) > 0 {
+		opts = checkerOpts[0]
 	}
 
 	// Initialize spinner
@@ -174,6 +180,7 @@ func New(
 		strictMode:  strictMode,
 		scanInclude: scanInclude,
 		scanExclude: scanExclude,
+		checkerOpts: opts,
 	}
 }
 
@@ -301,7 +308,7 @@ func (m *Model) handleLinksExtracted(msg LinksExtractedMsg) (tea.Model, tea.Cmd)
 		return m, nil
 	}
 	m.state = stateChecking
-	return m, StartCheckingCmd(m.links, &m.checkerState)
+	return m, StartCheckingCmd(m.links, &m.checkerState, m.checkerOpts)
 }
 
 // countUniqueURLsFromLinks counts unique URLs in a slice of checker.Link.
@@ -356,7 +363,7 @@ func (m *Model) getFilteredResults() []checker.Result {
 	switch m.filter {
 	case filterAll:
 		// All non-alive: warnings + dead + duplicates
-		var all []checker.Result
+		all := make([]checker.Result, 0, len(m.warningLinks)+len(m.deadLinks)+len(m.duplicateLinks))
 		all = append(all, m.warningLinks...)
 		all = append(all, m.deadLinks...)
 		all = append(all, m.duplicateLinks...)

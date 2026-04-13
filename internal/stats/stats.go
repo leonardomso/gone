@@ -179,49 +179,53 @@ func (s *Stats) String() string {
 
 	// Timing breakdown
 	b.WriteString("Timing:\n")
-	b.WriteString(fmt.Sprintf("  Scan files:    %8s", FormatDuration(s.ScanDuration())))
+	appendf(&b, "  Scan files:    %8s", FormatDuration(s.ScanDuration()))
 	if total > 0 {
-		b.WriteString(fmt.Sprintf("  (%4.1f%%)", float64(s.ScanDuration())/float64(total)*100))
+		appendf(&b, "  (%4.1f%%)", float64(s.ScanDuration())/float64(total)*100)
 	}
 	b.WriteString("\n")
 
-	b.WriteString(fmt.Sprintf("  Parse links:   %8s", FormatDuration(s.ParseDuration())))
+	appendf(&b, "  Parse links:   %8s", FormatDuration(s.ParseDuration()))
 	if total > 0 {
-		b.WriteString(fmt.Sprintf("  (%4.1f%%)", float64(s.ParseDuration())/float64(total)*100))
+		appendf(&b, "  (%4.1f%%)", float64(s.ParseDuration())/float64(total)*100)
 	}
 	b.WriteString("\n")
 
-	b.WriteString(fmt.Sprintf("  Check URLs:    %8s", FormatDuration(s.CheckDuration())))
+	appendf(&b, "  Check URLs:    %8s", FormatDuration(s.CheckDuration()))
 	if total > 0 {
-		b.WriteString(fmt.Sprintf("  (%4.1f%%)", float64(s.CheckDuration())/float64(total)*100))
+		appendf(&b, "  (%4.1f%%)", float64(s.CheckDuration())/float64(total)*100)
 	}
 	b.WriteString("\n")
 
 	b.WriteString("  ─────────────────────────\n")
-	b.WriteString(fmt.Sprintf("  Total:         %8s\n", FormatDuration(total)))
+	appendf(&b, "  Total:         %8s\n", FormatDuration(total))
 
 	// Throughput
 	b.WriteString("\nThroughput:\n")
-	b.WriteString(fmt.Sprintf("  Files scanned:     %5d\n", s.FilesScanned))
-	b.WriteString(fmt.Sprintf("  Links found:       %5d\n", s.LinksFound))
-	b.WriteString(fmt.Sprintf("  Unique URLs:       %5d\n", s.UniqueURLs))
+	appendf(&b, "  Files scanned:     %5d\n", s.FilesScanned)
+	appendf(&b, "  Links found:       %5d\n", s.LinksFound)
+	appendf(&b, "  Unique URLs:       %5d\n", s.UniqueURLs)
 	if s.Duplicates > 0 {
-		b.WriteString(fmt.Sprintf("  Duplicates:        %5d\n", s.Duplicates))
+		appendf(&b, "  Duplicates:        %5d\n", s.Duplicates)
 	}
 	if s.Ignored > 0 {
-		b.WriteString(fmt.Sprintf("  Ignored:           %5d\n", s.Ignored))
+		appendf(&b, "  Ignored:           %5d\n", s.Ignored)
 	}
-	b.WriteString(fmt.Sprintf("  URLs/second:       %5.1f\n", s.URLsPerSecond()))
-	b.WriteString(fmt.Sprintf("  Avg response:    %7s\n", FormatDuration(s.AvgResponseTime())))
+	appendf(&b, "  URLs/second:       %5.1f\n", s.URLsPerSecond())
+	appendf(&b, "  Avg response:    %7s\n", FormatDuration(s.AvgResponseTime()))
 
 	// Memory
 	b.WriteString("\nMemory:\n")
-	b.WriteString(fmt.Sprintf("  Heap in use:   %8s\n", FormatBytes(s.HeapAlloc)))
-	b.WriteString(fmt.Sprintf("  Total alloc:   %8s\n", FormatBytes(s.TotalAlloc)))
-	b.WriteString(fmt.Sprintf("  GC cycles:     %8d\n", s.NumGC))
-	b.WriteString(fmt.Sprintf("  Goroutines:    %8d\n", s.NumGoroutine))
+	appendf(&b, "  Heap in use:   %8s\n", FormatBytes(s.HeapAlloc))
+	appendf(&b, "  Total alloc:   %8s\n", FormatBytes(s.TotalAlloc))
+	appendf(&b, "  GC cycles:     %8d\n", s.NumGC)
+	appendf(&b, "  Goroutines:    %8d\n", s.NumGoroutine)
 
 	return b.String()
+}
+
+func appendf(b *strings.Builder, format string, args ...any) {
+	_, _ = fmt.Fprintf(b, format, args...)
 }
 
 // ToJSON returns a map suitable for JSON serialization.

@@ -139,9 +139,15 @@ func TestGetFilteredResultsAndView(t *testing.T) {
 	model.files = []string{"README.md"}
 	model.links = []checker.Link{{URL: "https://alive.example"}}
 	model.aliveLinks = []checker.Result{{Status: checker.StatusAlive, Link: checker.Link{URL: "https://alive.example"}}}
-	model.warningLinks = []checker.Result{{Status: checker.StatusRedirect, Link: checker.Link{URL: "https://warn.example"}}}
+	model.warningLinks = []checker.Result{{
+		Status: checker.StatusRedirect,
+		Link:   checker.Link{URL: "https://warn.example"},
+	}}
 	model.deadLinks = []checker.Result{{Status: checker.StatusDead, Link: checker.Link{URL: "https://dead.example"}}}
-	model.duplicateLinks = []checker.Result{{Status: checker.StatusDuplicate, Link: checker.Link{URL: "https://dup.example"}}}
+	model.duplicateLinks = []checker.Result{{
+		Status: checker.StatusDuplicate,
+		Link:   checker.Link{URL: "https://dup.example"},
+	}}
 
 	assert.Len(t, model.getFilteredResults(), 3)
 	model.filter = filterDead

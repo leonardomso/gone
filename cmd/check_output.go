@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 	"time"
 
@@ -89,14 +88,20 @@ func filterResults(results []checker.Result, opts checkRenderOptions) []checker.
 
 // outputText prints results as human-readable text to stdout.
 // This is the default output mode when no format flag is specified.
-func outputText(w io.Writer, results []checker.Result, summary checker.Summary, urlFilter *filter.Filter, opts checkRenderOptions) {
+func outputText(
+	w io.Writer,
+	results []checker.Result,
+	summary checker.Summary,
+	urlFilter *filter.Filter,
+	opts checkRenderOptions,
+) {
 	ignoredCount := getFilterIgnoredCount(urlFilter)
 	printSummaryLine(w, summary, ignoredCount)
 
 	filtered := filterResults(results, opts)
 
 	if len(filtered) == 0 {
-		fmt.Fprintln(w, getEmptyResultsMessage(summary, opts))
+		writeln(w, getEmptyResultsMessage(summary, opts))
 		maybeShowIgnored(w, urlFilter, opts)
 		return
 	}
@@ -120,13 +125,13 @@ func getFilterIgnoredCount(urlFilter *filter.Filter) int {
 
 // printSummaryLine prints the summary statistics line.
 func printSummaryLine(w io.Writer, summary checker.Summary, ignoredCount int) {
-	fmt.Fprintln(w)
+	writeln(w)
 	if ignoredCount > 0 {
-		fmt.Fprintf(w, "Summary: %d alive | %d warnings | %d dead | %d duplicates | %d ignored\n\n",
+		writef(w, "Summary: %d alive | %d warnings | %d dead | %d duplicates | %d ignored\n\n",
 			summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors,
 			summary.Duplicates, ignoredCount)
 	} else {
-		fmt.Fprintf(w, "Summary: %d alive | %d warnings | %d dead | %d duplicates\n\n",
+		writef(w, "Summary: %d alive | %d warnings | %d dead | %d duplicates\n\n",
 			summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors,
 			summary.Duplicates)
 	}

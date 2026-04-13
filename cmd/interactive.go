@@ -1,14 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
-	"github.com/leonardomso/gone/internal/parser"
-	"github.com/leonardomso/gone/internal/ui"
-
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -74,52 +68,12 @@ func init() {
 
 // runInteractive launches the interactive TUI for link checking.
 func runInteractive(_ *cobra.Command, args []string) {
-	// Load configuration
-	loadedCfg, err := LoadConfig(iNoConfig)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
-		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
-	}
-
-	path := "."
-	if len(args) > 0 {
-		path = args[0]
-	}
-
-	// Get effective file types from config
-	effectiveTypes := loadedCfg.GetTypes(iFileTypes, []string{"md"})
-
-	// Validate file types
-	supportedTypes := parser.SupportedFileTypes()
-	supported := make(map[string]bool, len(supportedTypes))
-	for _, t := range supportedTypes {
-		supported[t] = true
-	}
-	for _, t := range effectiveTypes {
-		if !supported[strings.ToLower(t)] {
-			fmt.Fprintf(os.Stderr, "Error: unsupported file type: %s (supported: %s)\n",
-				t, strings.Join(supportedTypes, ", "))
-			os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
-		}
-	}
-
-	// Get effective strict mode
-	effectiveStrict := loadedCfg.GetStrict(iStrictMode)
-
-	// Create filter from config and flags using shared helper
-	urlFilter, err := CreateFilterWithConfig(loadedCfg.Config(), iIgnoreDomains, iIgnorePatterns, iIgnoreRegex)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating filter: %v\n", err)
-		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
-	}
-
-	// Get scan options for include/exclude patterns
-	scanInclude, scanExclude := loadedCfg.GetScanOptions()
-
-	model := ui.New(path, urlFilter, effectiveTypes, effectiveStrict, scanInclude, scanExclude)
-	p := tea.NewProgram(model, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error running interactive mode: %v\n", err)
-		os.Exit(1) //nolint:revive // deep-exit is acceptable for CLI entry points
+	code := newInteractiveRunner(
+		currentInteractiveOptions(),
+		defaultCommandEnv(),
+		defaultIOStreams(),
+	).Run(args)
+	if code != 0 {
+		os.Exit(code)
 	}
 }

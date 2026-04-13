@@ -254,7 +254,6 @@ func extractLinksParallelWithRegistry(filePaths []string, strict bool) ([]Link, 
 
 	futures := make([]pond.ResultTask[fileResult], 0, len(filePaths))
 	for _, path := range filePaths {
-		path := path
 		futures = append(futures, pool.Submit(func() fileResult {
 			links, err := ExtractLinksWithRegistry(path, strict)
 			return fileResult{links: links, err: err}

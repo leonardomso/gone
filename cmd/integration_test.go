@@ -128,7 +128,7 @@ func TestCheck_StrictModeParseFailure(t *testing.T) {
 
 	result := runGone(t, tmpDir, "check", ".", "--types=json", "--strict", "--no-config")
 	require.Equal(t, 1, result.exitCode)
-	assert.Contains(t, result.stderr, "Error parsing files")
+	assert.Contains(t, result.stderr, "error parsing files")
 	assert.Contains(t, result.stderr, "broken.json")
 }
 
