@@ -41,7 +41,7 @@ func TestFindFiles(t *testing.T) {
 		assert.Len(t, files, 2)
 
 		// Should find both root.md and nested.md
-		var names []string
+		names := make([]string, 0, len(files))
 		for _, f := range files {
 			names = append(names, filepath.Base(f))
 		}
@@ -76,7 +76,7 @@ func TestFindFiles(t *testing.T) {
 		assert.Len(t, files, 3)
 
 		// Should find .md, .MD, and .Md
-		var names []string
+		names := make([]string, 0, len(files))
 		for _, f := range files {
 			names = append(names, filepath.Base(f))
 		}
@@ -197,7 +197,7 @@ func TestFindFilesByTypes(t *testing.T) {
 		assert.Len(t, files, 3)
 
 		// Collect extensions found
-		var extensions []string
+		extensions := make([]string, 0, len(files))
 		for _, f := range files {
 			extensions = append(extensions, filepath.Ext(f))
 		}
@@ -218,7 +218,7 @@ func TestFindFilesByTypes(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, files, 2)
 
-		var extensions []string
+		extensions := make([]string, 0, len(files))
 		for _, f := range files {
 			extensions = append(extensions, filepath.Ext(f))
 		}

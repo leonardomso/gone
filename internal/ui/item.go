@@ -97,73 +97,81 @@ func (i ResultItem) DetailView() string {
 	b.WriteString("┌─ Details ─────────────────────────────────────────────────────────────\n")
 
 	// Status line
-	b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Status:"), StatusBadge(r.Status)))
+	appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Status:"), StatusBadge(r.Status))
 
 	// Status-specific details
 	switch r.Status {
 	case checker.StatusAlive:
-		b.WriteString(fmt.Sprintf("│ %s  %d\n", DetailLabelStyle.Render("HTTP Code:"), r.StatusCode))
+		appendItemf(&b, "│ %s  %d\n", DetailLabelStyle.Render("HTTP Code:"), r.StatusCode)
 
 	case checker.StatusRedirect:
-		b.WriteString(fmt.Sprintf("│ %s  %d\n", DetailLabelStyle.Render("Original:"), r.StatusCode))
-		b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Chain:"), formatRedirectChain(r)))
-		b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Final URL:"), r.FinalURL))
-		b.WriteString(fmt.Sprintf("│ %s  %d\n", DetailLabelStyle.Render("Final Status:"), r.FinalStatus))
+		appendItemf(&b, "│ %s  %d\n", DetailLabelStyle.Render("Original:"), r.StatusCode)
+		appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Chain:"), formatRedirectChain(r))
+		appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Final URL:"), r.FinalURL)
+		appendItemf(&b, "│ %s  %d\n", DetailLabelStyle.Render("Final Status:"), r.FinalStatus)
 		b.WriteString("│\n")
-		b.WriteString(fmt.Sprintf("│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description())))
+		appendItemf(&b, "│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description()))
 
 	case checker.StatusBlocked:
-		b.WriteString(fmt.Sprintf("│ %s  %d\n", DetailLabelStyle.Render("HTTP Code:"), r.StatusCode))
+		appendItemf(&b, "│ %s  %d\n", DetailLabelStyle.Render("HTTP Code:"), r.StatusCode)
 		b.WriteString("│\n")
-		b.WriteString(fmt.Sprintf("│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description())))
+		appendItemf(&b, "│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description()))
 
 	case checker.StatusDead:
 		if r.StatusCode > 0 {
-			b.WriteString(fmt.Sprintf("│ %s  %d\n", DetailLabelStyle.Render("HTTP Code:"), r.StatusCode))
+			appendItemf(&b, "│ %s  %d\n", DetailLabelStyle.Render("HTTP Code:"), r.StatusCode)
 		}
 		if len(r.RedirectChain) > 0 {
-			b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Chain:"), formatRedirectChain(r)))
-			b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Final URL:"), r.FinalURL))
-			b.WriteString(fmt.Sprintf("│ %s  %d\n", DetailLabelStyle.Render("Final Status:"), r.FinalStatus))
+			appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Chain:"), formatRedirectChain(r))
+			appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Final URL:"), r.FinalURL)
+			appendItemf(&b, "│ %s  %d\n", DetailLabelStyle.Render("Final Status:"), r.FinalStatus)
 		}
 		if r.Error != "" {
-			b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Error:"), r.Error))
+			appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Error:"), r.Error)
 		}
 
 	case checker.StatusError:
-		b.WriteString(fmt.Sprintf("│ %s  %s\n", DetailLabelStyle.Render("Error:"), r.Error))
+		appendItemf(&b, "│ %s  %s\n", DetailLabelStyle.Render("Error:"), r.Error)
 
 	case checker.StatusDuplicate:
 		if r.DuplicateOf != nil {
-			b.WriteString(fmt.Sprintf("│ %s  %s", DetailLabelStyle.Render("First found:"), r.DuplicateOf.Link.FilePath))
+			appendItemf(&b, "│ %s  %s", DetailLabelStyle.Render("First found:"), r.DuplicateOf.Link.FilePath)
 			if r.DuplicateOf.Link.Line > 0 {
-				b.WriteString(fmt.Sprintf(" (line %d)", r.DuplicateOf.Link.Line))
+				appendItemf(&b, " (line %d)", r.DuplicateOf.Link.Line)
 			}
 			b.WriteString("\n")
-			b.WriteString(fmt.Sprintf("│ %s  %s\n",
-				DetailLabelStyle.Render("Original status:"), StatusBadge(r.DuplicateOf.Status)))
+			appendItemf(
+				&b,
+				"│ %s  %s\n",
+				DetailLabelStyle.Render("Original status:"),
+				StatusBadge(r.DuplicateOf.Status),
+			)
 		}
 		b.WriteString("│\n")
-		b.WriteString(fmt.Sprintf("│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description())))
+		appendItemf(&b, "│ %s\n", DetailNoteStyle.Render("Note: "+r.Status.Description()))
 	}
 
 	// Link text if available
 	if text := truncateText(r.Link.Text, 60); text != "" {
 		b.WriteString("│\n")
-		b.WriteString(fmt.Sprintf("│ %s  %q\n", DetailLabelStyle.Render("Text:"), text))
+		appendItemf(&b, "│ %s  %q\n", DetailLabelStyle.Render("Text:"), text)
 	}
 
 	// File location
 	b.WriteString("│\n")
-	b.WriteString(fmt.Sprintf("│ %s  %s", DetailLabelStyle.Render("File:"), r.Link.FilePath))
+	appendItemf(&b, "│ %s  %s", DetailLabelStyle.Render("File:"), r.Link.FilePath)
 	if r.Link.Line > 0 {
-		b.WriteString(fmt.Sprintf(" (line %d)", r.Link.Line))
+		appendItemf(&b, " (line %d)", r.Link.Line)
 	}
 	b.WriteString("\n")
 
 	b.WriteString("└────────────────────────────────────────────────────────────────────────\n")
 
 	return b.String()
+}
+
+func appendItemf(b *strings.Builder, format string, args ...any) {
+	_, _ = fmt.Fprintf(b, format, args...)
 }
 
 // formatRedirectChain formats the redirect chain for display.

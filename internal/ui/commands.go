@@ -73,22 +73,31 @@ type CheckerState struct {
 }
 
 // StartCheckingCmd initializes the checker and returns the first result.
-func StartCheckingCmd(links []checker.Link, state *CheckerState) tea.Cmd {
+func StartCheckingCmd(
+	links []checker.Link,
+	state *CheckerState,
+	opts checker.Options,
+) tea.Cmd {
 	return func() tea.Msg {
-		// Create a cancellable context
 		ctx, cancel := context.WithCancel(context.Background())
 		state.CancelFunc = cancel
 
-		// Create checker with default options
-		opts := checker.DefaultOptions()
 		c := checker.New(opts)
 
-		// Start checking and store the channel
-		state.ResultsChan = c.Check(ctx, links)
+		sourceResults := c.Check(ctx, links)
+		results := make(chan checker.Result, max(opts.Concurrency, 1))
+		go func() {
+			defer close(results)
+			defer cancel()
+			for result := range sourceResults {
+				results <- result
+			}
+		}()
+		state.ResultsChan = results
 
-		// Get the first result
 		result, ok := <-state.ResultsChan
 		if !ok {
+			state.ResultsChan = nil
 			return AllChecksCompleteMsg{}
 		}
 		return LinkCheckedMsg{Result: result}
@@ -104,6 +113,11 @@ func WaitForNextResultCmd(state *CheckerState) tea.Cmd {
 
 		result, ok := <-state.ResultsChan
 		if !ok {
+			if state.CancelFunc != nil {
+				state.CancelFunc()
+				state.CancelFunc = nil
+			}
+			state.ResultsChan = nil
 			return AllChecksCompleteMsg{}
 		}
 		return LinkCheckedMsg{Result: result}

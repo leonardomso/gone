@@ -10,7 +10,7 @@ import (
 	"github.com/leonardomso/gone/internal/stats"
 )
 
-type CheckOptions struct {
+type checkOptions struct {
 	OutputFormat   string
 	OutputFile     string
 	Concurrency    int
@@ -31,12 +31,12 @@ type CheckOptions struct {
 }
 
 type checkRunner struct {
-	opts CheckOptions
+	opts checkOptions
 	env  CommandEnv
 	io   IOStreams
 }
 
-func newCheckRunner(opts CheckOptions, env CommandEnv, streams IOStreams) *checkRunner {
+func newCheckRunner(opts checkOptions, env CommandEnv, streams IOStreams) *checkRunner {
 	return &checkRunner{
 		opts: opts,
 		env:  env,
@@ -44,8 +44,8 @@ func newCheckRunner(opts CheckOptions, env CommandEnv, streams IOStreams) *check
 	}
 }
 
-func currentCheckOptions() CheckOptions {
-	return CheckOptions{
+func currentCheckOptions() checkOptions {
+	return checkOptions{
 		OutputFormat:   outputFormat,
 		OutputFile:     outputFile,
 		Concurrency:    concurrency,
@@ -79,12 +79,12 @@ func (r *checkRunner) renderOptions() checkRenderOptions {
 func (r *checkRunner) Run(args []string) int {
 	perf := r.env.NewStats()
 	if err := r.validateFlags(); err != nil {
-		return r.fail(1, "Invalid flags", err)
+		return r.fail("Invalid flags", err)
 	}
 
 	loadedCfg, err := r.env.LoadConfig(r.opts.NoConfig)
 	if err != nil {
-		return r.fail(1, "Config error", err)
+		return r.fail("Config error", err)
 	}
 
 	path := getPathArg(args)
@@ -93,12 +93,17 @@ func (r *checkRunner) Run(args []string) int {
 
 	files, err := r.scanFilesWithConfig(path, loadedCfg, perf, useStructuredOutput)
 	if err != nil {
-		return r.fail(1, "Error scanning directory", err)
+		return r.fail("Error scanning directory", err)
 	}
 
-	links, urlFilter, done, err := r.parseAndFilterLinksWithConfig(files, loadedCfg, perf, useStructuredOutput)
+	links, urlFilter, done, err := r.parseAndFilterLinksWithConfig(
+		files,
+		loadedCfg,
+		perf,
+		useStructuredOutput,
+	)
 	if err != nil {
-		return r.fail(1, err.Error(), nil)
+		return r.fail(err.Error(), nil)
 	}
 	if done {
 		return 0
@@ -110,7 +115,7 @@ func (r *checkRunner) Run(args []string) int {
 		files, results, summary, urlFilter, perf,
 		useStructuredOutput, effectiveFormat, loadedCfg.GetShowStats(r.opts.ShowStats),
 	); err != nil {
-		return r.fail(1, err.Error(), nil)
+		return r.fail(err.Error(), nil)
 	}
 
 	if summary.HasDeadLinks() {
@@ -119,20 +124,20 @@ func (r *checkRunner) Run(args []string) int {
 	return 0
 }
 
-func (r *checkRunner) fail(code int, message string, err error) int {
+func (r *checkRunner) fail(message string, err error) int {
 	if err != nil {
 		if message != "" {
-			fmt.Fprintf(r.io.ErrOut, "%s: %v\n", message, err)
+			writef(r.io.ErrOut, "%s: %v\n", message, err)
 		} else {
-			fmt.Fprintf(r.io.ErrOut, "%v\n", err)
+			writef(r.io.ErrOut, "%v\n", err)
 		}
-		return code
+		return 1
 	}
 
 	if message != "" {
-		fmt.Fprintln(r.io.ErrOut, message)
+		writeln(r.io.ErrOut, message)
 	}
-	return code
+	return 1
 }
 
 func (r *checkRunner) validateFlags() error {
@@ -156,7 +161,7 @@ func (r *checkRunner) scanFilesWithConfig(
 
 	effectiveTypes := cfg.GetTypes(r.opts.FileTypes, []string{"md"})
 	if err := validateFileTypes(effectiveTypes); err != nil {
-		return nil, fmt.Errorf("Invalid file types: %w", err)
+		return nil, fmt.Errorf("invalid file types: %w", err)
 	}
 
 	scanOpts := cfg.BuildScanOptions(path, r.opts.FileTypes, []string{"md"})
@@ -168,7 +173,7 @@ func (r *checkRunner) scanFilesWithConfig(
 	perf.EndScan(len(files))
 
 	if !useStructuredOutput {
-		fmt.Fprintf(r.io.Out, "Found %d file(s) of type(s): %s\n", len(files), strings.Join(effectiveTypes, ", "))
+		writef(r.io.Out, "Found %d file(s) of type(s): %s\n", len(files), strings.Join(effectiveTypes, ", "))
 	}
 
 	return files, nil
@@ -181,20 +186,31 @@ func (r *checkRunner) parseAndFilterLinksWithConfig(
 
 	parserLinks, err := r.env.ExtractLinks(files, cfg.GetStrict(r.opts.StrictMode))
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("Error parsing files: %w", err)
+		return nil, nil, false, fmt.Errorf("error parsing files: %w", err)
 	}
 
 	if len(parserLinks) == 0 {
 		perf.EndParse(0, 0, 0, 0)
-		if err := r.handleEmptyLinksWithStats(files, useStructuredOutput, perf, cfg.GetOutputFormat(r.opts.OutputFormat), cfg.GetShowStats(r.opts.ShowStats)); err != nil {
-			return nil, nil, false, fmt.Errorf("Error formatting output: %w", err)
+		if err := r.handleEmptyLinksWithStats(
+			files,
+			useStructuredOutput,
+			perf,
+			cfg.GetOutputFormat(r.opts.OutputFormat),
+			cfg.GetShowStats(r.opts.ShowStats),
+		); err != nil {
+			return nil, nil, false, fmt.Errorf("error formatting output: %w", err)
 		}
 		return nil, nil, true, nil
 	}
 
-	urlFilter, err := r.env.CreateFilterWithConfig(cfg.Config(), r.opts.IgnoreDomains, r.opts.IgnorePatterns, r.opts.IgnoreRegex)
+	urlFilter, err := r.env.CreateFilterWithConfig(
+		cfg.Config(),
+		r.opts.IgnoreDomains,
+		r.opts.IgnorePatterns,
+		r.opts.IgnoreRegex,
+	)
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("Error creating filter: %w", err)
+		return nil, nil, false, fmt.Errorf("error creating filter: %w", err)
 	}
 
 	links := FilterParserLinks(parserLinks, urlFilter)
@@ -208,8 +224,15 @@ func (r *checkRunner) parseAndFilterLinksWithConfig(
 	}
 
 	if len(links) == 0 {
-		if err := r.handleAllFilteredWithStats(files, useStructuredOutput, urlFilter, perf, cfg.GetOutputFormat(r.opts.OutputFormat), cfg.GetShowStats(r.opts.ShowStats)); err != nil {
-			return nil, nil, false, fmt.Errorf("Error formatting output: %w", err)
+		if err := r.handleAllFilteredWithStats(
+			files,
+			useStructuredOutput,
+			urlFilter,
+			perf,
+			cfg.GetOutputFormat(r.opts.OutputFormat),
+			cfg.GetShowStats(r.opts.ShowStats),
+		); err != nil {
+			return nil, nil, false, fmt.Errorf("error formatting output: %w", err)
 		}
 		return nil, urlFilter, true, nil
 	}
@@ -235,30 +258,50 @@ func (r *checkRunner) routeOutputWithConfig(
 ) error {
 	switch {
 	case useStructuredOutput:
-		return r.handleStructuredOutputWithStats(files, results, summary, urlFilter, perf, effectiveFormat, effectiveShowStats)
+		return r.handleStructuredOutputWithStats(
+			files,
+			results,
+			summary,
+			urlFilter,
+			perf,
+			effectiveFormat,
+			effectiveShowStats,
+		)
 	case r.opts.OutputFile != "":
 		return r.handleFileOutputWithStats(files, results, summary, urlFilter, perf, effectiveShowStats)
 	default:
 		outputText(r.io.Out, results, summary, urlFilter, r.renderOptions())
 		if effectiveShowStats {
-			fmt.Fprint(r.io.Out, perf.String())
+			writeString(r.io.Out, perf.String())
 		}
 		return nil
 	}
 }
 
 func (r *checkRunner) handleEmptyLinksWithStats(
-	files []string, useStructuredOutput bool, perf *stats.Stats, effectiveFormat string, effectiveShowStats bool,
+	files []string,
+	useStructuredOutput bool,
+	perf *stats.Stats,
+	effectiveFormat string,
+	effectiveShowStats bool,
 ) error {
 	switch {
 	case useStructuredOutput:
-		return r.handleStructuredOutputWithStats(files, nil, checker.Summary{}, nil, perf, effectiveFormat, effectiveShowStats)
+		return r.handleStructuredOutputWithStats(
+			files,
+			nil,
+			checker.Summary{},
+			nil,
+			perf,
+			effectiveFormat,
+			effectiveShowStats,
+		)
 	case r.opts.OutputFile != "":
 		return r.handleFileOutputWithStats(files, nil, checker.Summary{}, nil, perf, effectiveShowStats)
 	default:
-		fmt.Fprintln(r.io.Out, "No links found.")
+		writeln(r.io.Out, "No links found.")
 		if effectiveShowStats {
-			fmt.Fprint(r.io.Out, perf.String())
+			writeString(r.io.Out, perf.String())
 		}
 		return nil
 	}
@@ -270,16 +313,24 @@ func (r *checkRunner) handleAllFilteredWithStats(
 ) error {
 	switch {
 	case useStructuredOutput:
-		return r.handleStructuredOutputWithStats(files, nil, checker.Summary{}, urlFilter, perf, effectiveFormat, effectiveShowStats)
+		return r.handleStructuredOutputWithStats(
+			files,
+			nil,
+			checker.Summary{},
+			urlFilter,
+			perf,
+			effectiveFormat,
+			effectiveShowStats,
+		)
 	case r.opts.OutputFile != "":
 		return r.handleFileOutputWithStats(files, nil, checker.Summary{}, urlFilter, perf, effectiveShowStats)
 	default:
-		fmt.Fprintln(r.io.Out, "\nAll links were ignored by filter rules.")
+		writeln(r.io.Out, "\nAll links were ignored by filter rules.")
 		if r.opts.ShowIgnored && urlFilter != nil {
 			printIgnoredURLs(r.io.Out, urlFilter)
 		}
 		if effectiveShowStats {
-			fmt.Fprint(r.io.Out, perf.String())
+			writeString(r.io.Out, perf.String())
 		}
 		return nil
 	}
@@ -296,7 +347,7 @@ func (r *checkRunner) handleStructuredOutputWithStats(
 
 	data, err := r.env.FormatReport(report, output.Format(effectiveFormat))
 	if err != nil {
-		return fmt.Errorf("Error formatting output: %w", err)
+		return fmt.Errorf("error formatting output: %w", err)
 	}
 
 	_, err = r.io.Out.Write(data)
@@ -313,19 +364,19 @@ func (r *checkRunner) handleFileOutputWithStats(
 	}
 
 	if err := r.env.WriteToFile(report, r.opts.OutputFile); err != nil {
-		return fmt.Errorf("Error writing file: %w", err)
+		return fmt.Errorf("error writing file: %w", err)
 	}
 
-	fmt.Fprintf(r.io.Out, "Wrote report to %s\n", r.opts.OutputFile)
-	fmt.Fprintf(r.io.Out, "\nSummary: %d alive | %d warnings | %d dead | %d duplicates",
+	writef(r.io.Out, "Wrote report to %s\n", r.opts.OutputFile)
+	writef(r.io.Out, "\nSummary: %d alive | %d warnings | %d dead | %d duplicates",
 		summary.Alive, summary.WarningsCount(), summary.Dead+summary.Errors, summary.Duplicates)
 	if urlFilter != nil && urlFilter.IgnoredCount() > 0 {
-		fmt.Fprintf(r.io.Out, " | %d ignored", urlFilter.IgnoredCount())
+		writef(r.io.Out, " | %d ignored", urlFilter.IgnoredCount())
 	}
-	fmt.Fprintln(r.io.Out)
+	writeln(r.io.Out)
 
 	if effectiveShowStats {
-		fmt.Fprint(r.io.Out, perf.String())
+		writeString(r.io.Out, perf.String())
 	}
 
 	return nil

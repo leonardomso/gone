@@ -91,7 +91,7 @@ func TestCheckRunner_Run_NoLinksStructuredOutput(t *testing.T) {
 		}}, nil
 	}
 
-	runner := newCheckRunner(CheckOptions{FileTypes: []string{"md"}}, env, IOStreams{
+	runner := newCheckRunner(checkOptions{FileTypes: []string{"md"}}, env, IOStreams{
 		Out:    &stdout,
 		ErrOut: &stderr,
 	})
@@ -112,7 +112,7 @@ func TestCheckRunner_Run_AllLinksIgnoredTextOutput(t *testing.T) {
 		return []parser.Link{{URL: "https://ignored.example/path", FilePath: "README.md", Line: 3}}, nil
 	}
 
-	runner := newCheckRunner(CheckOptions{
+	runner := newCheckRunner(checkOptions{
 		FileTypes:     []string{"md"},
 		ShowIgnored:   true,
 		IgnoreDomains: []string{"ignored.example"},
@@ -147,7 +147,7 @@ func TestCheckRunner_Run_FileOutputSummary(t *testing.T) {
 	}
 
 	outputPath := filepath.Join(t.TempDir(), "report.json")
-	runner := newCheckRunner(CheckOptions{
+	runner := newCheckRunner(checkOptions{
 		FileTypes:  []string{"md"},
 		OutputFile: outputPath,
 	}, env, IOStreams{
@@ -180,7 +180,7 @@ func TestCheckRunner_Run_DeadLinksReturnExitCodeOne(t *testing.T) {
 		}
 	}
 
-	runner := newCheckRunner(CheckOptions{
+	runner := newCheckRunner(checkOptions{
 		FileTypes: []string{"md"},
 	}, env, IOStreams{
 		Out:    &stdout,
@@ -207,9 +207,21 @@ func TestOutputTextAndPrintHelpers(t *testing.T) {
 	}
 	results := []checker.Result{
 		primary,
-		{Link: checker.Link{URL: "https://dead.example", FilePath: "README.md", Line: 2}, Status: checker.StatusDead, StatusCode: 404},
-		{Link: checker.Link{URL: "https://duplicate.example", FilePath: "README.md", Line: 3}, Status: checker.StatusDuplicate, DuplicateOf: &primary},
-		{Link: checker.Link{URL: "https://alive.example", FilePath: "README.md", Line: 4}, Status: checker.StatusAlive, StatusCode: 200},
+		{
+			Link:       checker.Link{URL: "https://dead.example", FilePath: "README.md", Line: 2},
+			Status:     checker.StatusDead,
+			StatusCode: 404,
+		},
+		{
+			Link:        checker.Link{URL: "https://duplicate.example", FilePath: "README.md", Line: 3},
+			Status:      checker.StatusDuplicate,
+			DuplicateOf: &primary,
+		},
+		{
+			Link:       checker.Link{URL: "https://alive.example", FilePath: "README.md", Line: 4},
+			Status:     checker.StatusAlive,
+			StatusCode: 200,
+		},
 	}
 
 	urlFilter, err := filter.New(filter.Config{Domains: []string{"ignored.example"}})
@@ -234,8 +246,18 @@ func TestOutputText_GroupedVsFlat(t *testing.T) {
 	t.Parallel()
 
 	results := []checker.Result{
-		{Link: checker.Link{URL: "https://redirect.example", FilePath: "README.md", Line: 1}, Status: checker.StatusRedirect, StatusCode: 301, FinalStatus: 200, FinalURL: "https://final.example"},
-		{Link: checker.Link{URL: "https://dead.example", FilePath: "README.md", Line: 2}, Status: checker.StatusDead, StatusCode: 404},
+		{
+			Link:        checker.Link{URL: "https://redirect.example", FilePath: "README.md", Line: 1},
+			Status:      checker.StatusRedirect,
+			StatusCode:  301,
+			FinalStatus: 200,
+			FinalURL:    "https://final.example",
+		},
+		{
+			Link:       checker.Link{URL: "https://dead.example", FilePath: "README.md", Line: 2},
+			Status:     checker.StatusDead,
+			StatusCode: 404,
+		},
 	}
 	summary := checker.Summarize(results)
 
@@ -254,9 +276,21 @@ func TestOutputText_GroupedVsFlat(t *testing.T) {
 func TestGetEmptyResultsMessage_Variants(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "No alive links found.", getEmptyResultsMessage(checker.Summary{}, checkRenderOptions{ShowAlive: true}))
-	assert.Equal(t, "No warnings found.", getEmptyResultsMessage(checker.Summary{}, checkRenderOptions{ShowWarnings: true}))
-	assert.Equal(t, "No dead links found.", getEmptyResultsMessage(checker.Summary{Redirects: 1}, checkRenderOptions{ShowDead: true}))
+	assert.Equal(
+		t,
+		"No alive links found.",
+		getEmptyResultsMessage(checker.Summary{}, checkRenderOptions{ShowAlive: true}),
+	)
+	assert.Equal(
+		t,
+		"No warnings found.",
+		getEmptyResultsMessage(checker.Summary{}, checkRenderOptions{ShowWarnings: true}),
+	)
+	assert.Equal(
+		t,
+		"No dead links found.",
+		getEmptyResultsMessage(checker.Summary{Redirects: 1}, checkRenderOptions{ShowDead: true}),
+	)
 	assert.Equal(t, "All links are alive!", getEmptyResultsMessage(checker.Summary{Alive: 3}, checkRenderOptions{}))
 }
 
@@ -282,7 +316,11 @@ func TestRunInteractiveFix_Branches(t *testing.T) {
 			input:        "oops\ny\n",
 			changes:      []fixer.FileChanges{{FilePath: "README.md", TotalFixes: 1}},
 			expectedCode: 0,
-			expectOut:    []string{"Invalid input.", "Fixed 1 redirect(s) in README.md", "Fixed 1 redirect(s) across 1 file(s)."},
+			expectOut: []string{
+				"Invalid input.",
+				"Fixed 1 redirect(s) in README.md",
+				"Fixed 1 redirect(s) across 1 file(s).",
+			},
 		},
 		{
 			name:  "quit",
@@ -357,7 +395,7 @@ func TestFixRunner_Run_DryRun(t *testing.T) {
 		}
 	}
 
-	runner := newFixRunner(FixOptions{
+	runner := newFixRunner(fixOptions{
 		FileTypes: []string{"md"},
 		DryRun:    true,
 	}, env, IOStreams{

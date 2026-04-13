@@ -107,7 +107,11 @@ func TestLoadedConfig_GettersAndBuilders(t *testing.T) {
 	assert.Equal(t, []string{"md"}, loaded.GetTypes([]string{"md"}, []string{"json"}))
 	assert.Equal(t, []string{"yaml"}, loaded.GetTypes([]string{"yaml"}, []string{"md"}))
 
-	opts := loaded.BuildCheckerOptions(checker.DefaultConcurrency, int(checker.DefaultTimeout.Seconds()), checker.DefaultMaxRetries)
+	opts := loaded.BuildCheckerOptions(
+		checker.DefaultConcurrency,
+		int(checker.DefaultTimeout.Seconds()),
+		checker.DefaultMaxRetries,
+	)
 	assert.Equal(t, 12, opts.Concurrency)
 	assert.Equal(t, 7*time.Second, opts.Timeout)
 	assert.Equal(t, 4, opts.MaxRetries)
