@@ -284,7 +284,7 @@ func (*Fixer) Preview(changes []FileChanges) string {
 //
 // The boundary rule uses RFC 3986 unreserved + reserved + pct-encoded as the
 // "could be part of a URL" character set.
-func replaceBoundedURL(content, oldURL, newURL string) (string, int) {
+func replaceBoundedURL(content, oldURL, newURL string) (result string, replacements int) {
 	if oldURL == "" {
 		return content, 0
 	}
@@ -342,7 +342,7 @@ func isExactURLMatch(content string, start, end int) bool {
 // longer URL and must not be replaced.
 //
 // The set is intentionally narrower than RFC 3986's full reserved+unreserved:
-// characters like ')', ']', ',', ';', '\'' technically appear in some URLs
+// characters like ')', ']', ',', ';', '\” technically appear in some URLs
 // but in markdown, JSON, YAML and HTML they act as terminators. Treating them
 // as continuation chars would prevent ALL real fixes ('[t](https://x.com)'
 // would refuse to replace because of the trailing ')'). The chosen set
