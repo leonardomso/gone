@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/leonardomso/gone/internal/atomicfile"
 	"github.com/leonardomso/gone/internal/checker"
 	"github.com/leonardomso/gone/internal/parser"
 )
@@ -428,10 +429,11 @@ func (*Fixer) ApplyToFile(fc FileChanges) (*FixResult, error) {
 		return result, nil
 	}
 
-	// Write modified content back to file. The scanner rejects symlinks, so
-	// fc.FilePath is expected to point to a regular file inside the scan root.
-	err = os.WriteFile(fc.FilePath, []byte(modifiedContent), 0o600)
-	if err != nil {
+	// Atomic write: a crash mid-write must leave the original file intact,
+	// not a truncated / half-rewritten document. The scanner rejects symlinks,
+	// so fc.FilePath is expected to point to a regular file inside the scan
+	// root.
+	if err := atomicfile.WriteFile(fc.FilePath, []byte(modifiedContent), 0o600); err != nil {
 		result.Error = fmt.Errorf("writing file: %w", err)
 		return result, result.Error
 	}
