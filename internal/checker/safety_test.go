@@ -232,6 +232,7 @@ func TestFollowRedirectChain_BlocksRedirectToLinkLocal(t *testing.T) {
 		WithConcurrency(1).
 		WithMaxRetries(0).
 		WithMaxRedirects(5))
+	t.Cleanup(c.Close)
 
 	// Issue the redirect-follow path directly so we exercise the validateURL
 	// guard inside followRedirectChain. With AllowPrivateHosts=true, the
@@ -260,6 +261,7 @@ func TestFollowRedirectChain_BlocksInitialPrivateIP_StrictMode(t *testing.T) {
 		WithAllowPrivateHosts(false).
 		WithConcurrency(1).
 		WithMaxRetries(0))
+	t.Cleanup(c.Close)
 
 	link := Link{URL: srv.URL, FilePath: "x.md", Line: 1}
 	results := c.CheckAll([]Link{link})
@@ -310,6 +312,7 @@ func TestFollowRedirectChain_RefusesLinkLocalLocation(t *testing.T) {
 		WithMaxRetries(0).
 		WithMaxRedirects(3).
 		WithTimeout(2_000_000_000)) // 2s; we don't actually expect a dial
+	t.Cleanup(c.Close)
 
 	results := c.CheckAll([]Link{{URL: srv.URL, FilePath: "x.md", Line: 1}})
 	require.Len(t, results, 1)

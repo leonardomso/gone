@@ -33,6 +33,13 @@ func New(opts Options) *Checker {
 	}
 }
 
+// Close releases idle HTTP connections held by the underlying client.
+// Callers should invoke Close when the Checker is no longer needed so the
+// connection-pool goroutines (readLoop/writeLoop) can exit promptly.
+func (c *Checker) Close() {
+	c.client.CloseIdleConnections()
+}
+
 // newHTTPClient creates an optimized HTTP client for link checking.
 // It configures connection pooling for efficiency, proper timeouts for reliability,
 // and TLS settings for security. The client does NOT follow redirects automatically
