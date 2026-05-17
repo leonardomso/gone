@@ -11,10 +11,11 @@ var (
 	iFileTypes  []string
 	iStrictMode bool
 
-	iIgnoreDomains  []string
-	iIgnorePatterns []string
-	iIgnoreRegex    []string
-	iNoConfig       bool
+	iIgnoreDomains     []string
+	iIgnorePatterns    []string
+	iIgnoreRegex       []string
+	iNoConfig          bool
+	iAllowPrivateHosts bool
 )
 
 // interactiveCmd represents the interactive command.
@@ -64,6 +65,11 @@ func init() {
 		"Regex patterns to ignore (can be repeated)")
 	interactiveCmd.Flags().BoolVar(&iNoConfig, "no-config", false,
 		"Skip loading .gonerc.yaml config file")
+
+	// Security options
+	interactiveCmd.Flags().BoolVar(&iAllowPrivateHosts, "allow-private-hosts", false,
+		"Allow requests to loopback, private, link-local and reserved IP "+
+			"ranges. Default is to block them to prevent SSRF.")
 }
 
 // runInteractive launches the interactive TUI for link checking.

@@ -65,6 +65,13 @@ type CheckConfig struct {
 	// Strict fails on malformed files instead of skipping them.
 	// Default: false
 	Strict bool `yaml:"strict"`
+
+	// AllowPrivateHosts permits checking URLs that resolve to loopback,
+	// private, link-local and other reserved IP ranges.
+	// Default: false (blocked to prevent SSRF when scanning untrusted
+	// documents). Users who legitimately reference intranet hosts should
+	// opt in via this setting or via the --allow-private-hosts flag.
+	AllowPrivateHosts bool `yaml:"allow_private_hosts"`
 }
 
 // OutputConfig holds output preferences for the check command.

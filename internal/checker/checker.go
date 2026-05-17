@@ -51,11 +51,16 @@ func newHTTPClient(opts Options) *http.Client {
 			MinVersion:         tls.VersionTLS12,
 		},
 
-		// Timeout layers for different phases - tuned for speed
-		DialContext: (&net.Dialer{
-			Timeout:   opts.Timeout,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		// Timeout layers for different phases - tuned for speed.
+		// The base dialer is wrapped by safeDialContext so every resolved
+		// IP is screened against the SSRF blocklist before connecting.
+		DialContext: safeDialContext(
+			(&net.Dialer{
+				Timeout:   opts.Timeout,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			opts.AllowPrivateHosts,
+		),
 		TLSHandshakeTimeout:   5 * time.Second, // Faster TLS handshake timeout
 		ResponseHeaderTimeout: opts.Timeout,
 		ExpectContinueTimeout: 1 * time.Second,
@@ -342,6 +347,13 @@ func (c *Checker) followRedirectChain(ctx context.Context, startURL string) ([]R
 	currentURL := startURL
 
 	for i := 0; i < c.opts.MaxRedirects; i++ {
+		// Refuse to fetch URLs whose scheme is not http(s) or whose literal
+		// host IP is in the SSRF blocklist. safeDialContext catches the
+		// hostname-resolves-to-private-IP case at the TCP layer.
+		if err := validateURL(currentURL, c.opts.AllowPrivateHosts); err != nil {
+			return chain, currentURL, 0, fmt.Errorf("blocked redirect: %w", err)
+		}
+
 		statusCode, location, err := c.doRequestGetLocation(ctx, currentURL)
 		if err != nil {
 			return chain, currentURL, 0, err

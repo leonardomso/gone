@@ -111,10 +111,12 @@ func TestLoadedConfig_GettersAndBuilders(t *testing.T) {
 		checker.DefaultConcurrency,
 		int(checker.DefaultTimeout.Seconds()),
 		checker.DefaultMaxRetries,
+		false,
 	)
 	assert.Equal(t, 12, opts.Concurrency)
 	assert.Equal(t, 7*time.Second, opts.Timeout)
 	assert.Equal(t, 4, opts.MaxRetries)
+	assert.False(t, opts.AllowPrivateHosts)
 
 	scanOpts := loaded.BuildScanOptions("/tmp/docs", []string{"md"}, []string{"md"})
 	assert.Equal(t, "/tmp/docs", scanOpts.Root)

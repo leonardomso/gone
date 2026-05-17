@@ -3,12 +3,13 @@ package cmd
 import "github.com/leonardomso/gone/internal/checker"
 
 type interactiveOptions struct {
-	FileTypes      []string
-	StrictMode     bool
-	IgnoreDomains  []string
-	IgnorePatterns []string
-	IgnoreRegex    []string
-	NoConfig       bool
+	FileTypes         []string
+	StrictMode        bool
+	IgnoreDomains     []string
+	IgnorePatterns    []string
+	IgnoreRegex       []string
+	NoConfig          bool
+	AllowPrivateHosts bool
 }
 
 type interactiveRunner struct {
@@ -31,12 +32,13 @@ func newInteractiveRunner(
 
 func currentInteractiveOptions() interactiveOptions {
 	return interactiveOptions{
-		FileTypes:      append([]string{}, iFileTypes...),
-		StrictMode:     iStrictMode,
-		IgnoreDomains:  append([]string{}, iIgnoreDomains...),
-		IgnorePatterns: append([]string{}, iIgnorePatterns...),
-		IgnoreRegex:    append([]string{}, iIgnoreRegex...),
-		NoConfig:       iNoConfig,
+		FileTypes:         append([]string{}, iFileTypes...),
+		StrictMode:        iStrictMode,
+		IgnoreDomains:     append([]string{}, iIgnoreDomains...),
+		IgnorePatterns:    append([]string{}, iIgnorePatterns...),
+		IgnoreRegex:       append([]string{}, iIgnoreRegex...),
+		NoConfig:          iNoConfig,
+		AllowPrivateHosts: iAllowPrivateHosts,
 	}
 }
 
@@ -76,6 +78,7 @@ func (r *interactiveRunner) Run(args []string) int {
 			checker.DefaultConcurrency,
 			int(checker.DefaultTimeout.Seconds()),
 			checker.DefaultMaxRetries,
+			r.opts.AllowPrivateHosts,
 		),
 	)
 

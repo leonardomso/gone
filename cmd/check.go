@@ -30,11 +30,12 @@ var (
 	strictMode bool
 
 	// Ignore flags.
-	ignoreDomains  []string
-	ignorePatterns []string
-	ignoreRegex    []string
-	showIgnored    bool
-	noConfig       bool
+	ignoreDomains     []string
+	ignorePatterns    []string
+	ignoreRegex       []string
+	showIgnored       bool
+	noConfig          bool
+	allowPrivateHosts bool
 )
 
 // checkCmd represents the check command.
@@ -144,6 +145,12 @@ func init() {
 		"Show which URLs were ignored and why")
 	checkCmd.Flags().BoolVar(&noConfig, "no-config", false,
 		"Skip loading .gonerc.yaml config file")
+
+	// Security options
+	checkCmd.Flags().BoolVar(&allowPrivateHosts, "allow-private-hosts", false,
+		"Allow requests to loopback, private, link-local and reserved IP "+
+			"ranges. Default is to block them to prevent SSRF when scanning "+
+			"untrusted documents.")
 }
 
 // runCheck is the main entry point for the check command.

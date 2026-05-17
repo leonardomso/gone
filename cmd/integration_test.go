@@ -91,7 +91,7 @@ func TestCheck_WritesOutputFile(t *testing.T) {
 	))
 
 	reportPath := filepath.Join(tmpDir, "report.json")
-	result := runGone(t, tmpDir, "check", ".", "--output", reportPath, "--no-config")
+	result := runGone(t, tmpDir, "check", ".", "--output", reportPath, "--no-config", "--allow-private-hosts")
 	require.Equal(t, 0, result.exitCode, result.stderr)
 	assert.Contains(t, result.stdout, "Wrote report to")
 
@@ -179,7 +179,7 @@ func TestFix_Yes_UpdatesRedirectsAcrossFileTypes(t *testing.T) {
 		0o644,
 	))
 
-	result := runGone(t, tmpDir, "fix", ".", "--yes", "--types=md,json", "--no-config")
+	result := runGone(t, tmpDir, "fix", ".", "--yes", "--types=md,json", "--no-config", "--allow-private-hosts")
 	require.Equal(t, 0, result.exitCode, result.stderr)
 	assert.Contains(t, result.stdout, "Found 2 file(s) of type(s): md, json")
 	assert.Contains(t, result.stdout, "Fixed 2 redirect(s) across 2 file(s):")
@@ -218,7 +218,7 @@ func TestFix_InteractiveScriptedInput(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "README.md")
 	require.NoError(t, os.WriteFile(filePath, []byte("[docs]("+oldURL+")\n"), 0o644))
 
-	result := runGoneWithInput(t, tmpDir, "?\ny\n", "fix", ".", "--types=md", "--no-config")
+	result := runGoneWithInput(t, tmpDir, "?\ny\n", "fix", ".", "--types=md", "--no-config", "--allow-private-hosts")
 	require.Equal(t, 0, result.exitCode, result.stderr)
 	assert.Contains(t, result.stdout, "Interactive mode options:")
 	assert.Contains(t, result.stdout, "Fixed 1 redirect(s) in README.md")
