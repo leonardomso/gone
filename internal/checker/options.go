@@ -45,6 +45,13 @@ type Options struct {
 
 	// MaxRedirects is the maximum number of redirects to follow.
 	MaxRedirects int
+
+	// AllowPrivateHosts permits requests to loopback, link-local, private,
+	// and other reserved IP ranges. The zero value (false) is the safe
+	// default for users who run the tool on untrusted documents: it
+	// prevents SSRF against cloud metadata services (169.254.169.254),
+	// internal corporate hosts, and locally bound services.
+	AllowPrivateHosts bool
 }
 
 // DefaultOptions returns optimized default configuration.
@@ -96,6 +103,13 @@ func (o Options) WithUserAgent(ua string) Options {
 	if ua != "" {
 		o.UserAgent = ua
 	}
+	return o
+}
+
+// WithAllowPrivateHosts sets whether requests to loopback, link-local,
+// private, and reserved IP ranges are permitted. Defaults to false.
+func (o Options) WithAllowPrivateHosts(v bool) Options {
+	o.AllowPrivateHosts = v
 	return o
 }
 

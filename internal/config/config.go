@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/gobwas/glob"
 	"gopkg.in/yaml.v3"
@@ -65,6 +66,13 @@ type CheckConfig struct {
 	// Strict fails on malformed files instead of skipping them.
 	// Default: false
 	Strict bool `yaml:"strict"`
+
+	// AllowPrivateHosts permits checking URLs that resolve to loopback,
+	// private, link-local and other reserved IP ranges.
+	// Default: false (blocked to prevent SSRF when scanning untrusted
+	// documents). Users who legitimately reference intranet hosts should
+	// opt in via this setting or via the --allow-private-hosts flag.
+	AllowPrivateHosts bool `yaml:"allow_private_hosts"`
 }
 
 // OutputConfig holds output preferences for the check command.
@@ -109,6 +117,17 @@ type IgnoreConfig struct {
 // validOutputFormats lists all valid output format values.
 var validOutputFormats = []string{"json", "yaml", "xml", "junit", "markdown"}
 
+// Upper bounds for check settings. These exist to keep a single
+// .gonerc.yaml typo (e.g. concurrency: 100000, timeout: 99999) from spawning
+// a fork-bomb's worth of HTTP workers or hanging a CI job for a day. The
+// limits are generous — well above any legitimate use — and are validated at
+// load time so the failure is loud and immediate.
+const (
+	MaxConcurrency = 1024
+	MaxTimeout     = 300 // seconds
+	MaxRetries     = 10
+)
+
 // validFileTypes lists all valid file type values.
 // This is duplicated here to avoid circular dependency with parser package.
 var validFileTypes = []string{"md", "json", "yaml", "toml", "xml"}
@@ -145,27 +164,64 @@ func LoadFrom(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// FindAndLoad searches for a config file starting from the given directory
-// and walking up to parent directories until it finds one or reaches root.
-// This allows project-specific configs to be found from subdirectories.
-func FindAndLoad(startDir string) (*Config, error) {
-	dir := startDir
+// FindAndLoad searches for a config file starting from startDir and walking
+// up the directory chain until it finds one or reaches stopAt (inclusive).
+//
+// stopAt MUST be an ancestor of (or equal to) startDir; otherwise the search
+// is restricted to startDir alone. This bound prevents an unrelated
+// .gonerc.yaml in a parent directory — including world-writable paths like
+// /tmp or a shared home directory — from silently altering behavior when the
+// user runs `gone` from a subdirectory of an unfamiliar workspace.
+//
+// Both paths are cleaned before comparison so callers don't need to normalize
+// them. An empty stopAt is treated as startDir (no upward walk at all).
+func FindAndLoad(startDir, stopAt string) (*Config, error) {
+	startDir = filepath.Clean(startDir)
+	if stopAt == "" {
+		stopAt = startDir
+	} else {
+		stopAt = filepath.Clean(stopAt)
+	}
 
+	// Ensure stopAt is an ancestor of (or equal to) startDir. If it isn't,
+	// only consult startDir to avoid walking off into unrelated territory.
+	if !isAncestorOrEqual(stopAt, startDir) {
+		stopAt = startDir
+	}
+
+	dir := startDir
 	for {
 		configPath := filepath.Join(dir, DefaultConfigFileName)
 		if _, err := os.Stat(configPath); err == nil {
-			// Found a config file
 			return LoadFrom(configPath)
 		}
 
-		// Move to parent directory
+		if dir == stopAt {
+			return &Config{}, nil
+		}
+
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			// Reached root, no config found
+			// Reached filesystem root before reaching stopAt — give up
+			// rather than escaping the bound.
 			return &Config{}, nil
 		}
 		dir = parent
 	}
+}
+
+// isAncestorOrEqual reports whether ancestor is the same path as descendant
+// or an ancestor of it. Both paths must already be cleaned.
+func isAncestorOrEqual(ancestor, descendant string) bool {
+	if ancestor == descendant {
+		return true
+	}
+	// Append a separator so "/foo" doesn't match "/foobar".
+	prefix := ancestor
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	return strings.HasPrefix(descendant, prefix)
 }
 
 // Validate checks the configuration for errors.
@@ -182,11 +238,20 @@ func (c *Config) Validate() error {
 	if c.Check.Concurrency < 0 {
 		return fmt.Errorf("check.concurrency must be >= 0, got %d", c.Check.Concurrency)
 	}
+	if c.Check.Concurrency > MaxConcurrency {
+		return fmt.Errorf("check.concurrency must be <= %d, got %d", MaxConcurrency, c.Check.Concurrency)
+	}
 	if c.Check.Timeout < 0 {
 		return fmt.Errorf("check.timeout must be >= 0, got %d", c.Check.Timeout)
 	}
+	if c.Check.Timeout > MaxTimeout {
+		return fmt.Errorf("check.timeout must be <= %d seconds, got %d", MaxTimeout, c.Check.Timeout)
+	}
 	if c.Check.Retries < 0 {
 		return fmt.Errorf("check.retries must be >= 0, got %d", c.Check.Retries)
+	}
+	if c.Check.Retries > MaxRetries {
+		return fmt.Errorf("check.retries must be <= %d, got %d", MaxRetries, c.Check.Retries)
 	}
 
 	// Validate output format

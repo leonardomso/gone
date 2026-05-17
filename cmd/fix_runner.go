@@ -10,18 +10,19 @@ import (
 )
 
 type fixOptions struct {
-	Yes            bool
-	DryRun         bool
-	Concurrency    int
-	Timeout        int
-	Retries        int
-	ShowStats      bool
-	FileTypes      []string
-	StrictMode     bool
-	IgnoreDomains  []string
-	IgnorePatterns []string
-	IgnoreRegex    []string
-	NoConfig       bool
+	Yes               bool
+	DryRun            bool
+	Concurrency       int
+	Timeout           int
+	Retries           int
+	ShowStats         bool
+	FileTypes         []string
+	StrictMode        bool
+	IgnoreDomains     []string
+	IgnorePatterns    []string
+	IgnoreRegex       []string
+	NoConfig          bool
+	AllowPrivateHosts bool
 }
 
 type fixRunner struct {
@@ -40,18 +41,19 @@ func newFixRunner(opts fixOptions, env CommandEnv, streams IOStreams) *fixRunner
 
 func currentFixOptions() fixOptions {
 	return fixOptions{
-		Yes:            fixYes,
-		DryRun:         fixDryRun,
-		Concurrency:    fixConcurrency,
-		Timeout:        fixTimeout,
-		Retries:        fixRetries,
-		ShowStats:      fixShowStats,
-		FileTypes:      append([]string{}, fixFileTypes...),
-		StrictMode:     fixStrictMode,
-		IgnoreDomains:  append([]string{}, fixIgnoreDomains...),
-		IgnorePatterns: append([]string{}, fixIgnorePatterns...),
-		IgnoreRegex:    append([]string{}, fixIgnoreRegex...),
-		NoConfig:       fixNoConfig,
+		Yes:               fixYes,
+		DryRun:            fixDryRun,
+		Concurrency:       fixConcurrency,
+		Timeout:           fixTimeout,
+		Retries:           fixRetries,
+		ShowStats:         fixShowStats,
+		FileTypes:         append([]string{}, fixFileTypes...),
+		StrictMode:        fixStrictMode,
+		IgnoreDomains:     append([]string{}, fixIgnoreDomains...),
+		IgnorePatterns:    append([]string{}, fixIgnorePatterns...),
+		IgnoreRegex:       append([]string{}, fixIgnoreRegex...),
+		NoConfig:          fixNoConfig,
+		AllowPrivateHosts: fixAllowPrivateHosts,
 	}
 }
 
@@ -126,7 +128,10 @@ func (r *fixRunner) Run(args []string) int {
 
 	perf.StartCheck()
 	results := r.env.NewChecker(
-		loadedCfg.BuildCheckerOptions(r.opts.Concurrency, r.opts.Timeout, r.opts.Retries),
+		loadedCfg.BuildCheckerOptions(
+			r.opts.Concurrency, r.opts.Timeout, r.opts.Retries,
+			r.opts.AllowPrivateHosts,
+		),
 	).CheckAll(links)
 	perf.EndCheck()
 

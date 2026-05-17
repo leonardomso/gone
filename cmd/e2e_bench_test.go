@@ -100,6 +100,7 @@ func BenchmarkPipeline_FullCheck(b *testing.B) {
 
 		c := checker.New(
 			checker.DefaultOptions().
+				WithAllowPrivateHosts(true).
 				WithConcurrency(16).
 				WithTimeout(2 * time.Second).
 				WithMaxRetries(0),
@@ -135,6 +136,7 @@ func BenchmarkPipeline_FixDryRun(b *testing.B) {
 
 		c := checker.New(
 			checker.DefaultOptions().
+				WithAllowPrivateHosts(true).
 				WithConcurrency(16).
 				WithTimeout(2 * time.Second).
 				WithMaxRetries(0),

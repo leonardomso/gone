@@ -11,23 +11,24 @@ import (
 )
 
 type checkOptions struct {
-	OutputFormat   string
-	OutputFile     string
-	Concurrency    int
-	Timeout        int
-	Retries        int
-	ShowAlive      bool
-	ShowWarnings   bool
-	ShowDead       bool
-	ShowAll        bool
-	ShowStats      bool
-	FileTypes      []string
-	StrictMode     bool
-	IgnoreDomains  []string
-	IgnorePatterns []string
-	IgnoreRegex    []string
-	ShowIgnored    bool
-	NoConfig       bool
+	OutputFormat      string
+	OutputFile        string
+	Concurrency       int
+	Timeout           int
+	Retries           int
+	ShowAlive         bool
+	ShowWarnings      bool
+	ShowDead          bool
+	ShowAll           bool
+	ShowStats         bool
+	FileTypes         []string
+	StrictMode        bool
+	IgnoreDomains     []string
+	IgnorePatterns    []string
+	IgnoreRegex       []string
+	ShowIgnored       bool
+	NoConfig          bool
+	AllowPrivateHosts bool
 }
 
 type checkRunner struct {
@@ -46,23 +47,24 @@ func newCheckRunner(opts checkOptions, env CommandEnv, streams IOStreams) *check
 
 func currentCheckOptions() checkOptions {
 	return checkOptions{
-		OutputFormat:   outputFormat,
-		OutputFile:     outputFile,
-		Concurrency:    concurrency,
-		Timeout:        timeout,
-		Retries:        retries,
-		ShowAlive:      showAlive,
-		ShowWarnings:   showWarnings,
-		ShowDead:       showDead,
-		ShowAll:        showAll,
-		ShowStats:      showStats,
-		FileTypes:      append([]string{}, fileTypes...),
-		StrictMode:     strictMode,
-		IgnoreDomains:  append([]string{}, ignoreDomains...),
-		IgnorePatterns: append([]string{}, ignorePatterns...),
-		IgnoreRegex:    append([]string{}, ignoreRegex...),
-		ShowIgnored:    showIgnored,
-		NoConfig:       noConfig,
+		OutputFormat:      outputFormat,
+		OutputFile:        outputFile,
+		Concurrency:       concurrency,
+		Timeout:           timeout,
+		Retries:           retries,
+		ShowAlive:         showAlive,
+		ShowWarnings:      showWarnings,
+		ShowDead:          showDead,
+		ShowAll:           showAll,
+		ShowStats:         showStats,
+		FileTypes:         append([]string{}, fileTypes...),
+		StrictMode:        strictMode,
+		IgnoreDomains:     append([]string{}, ignoreDomains...),
+		IgnorePatterns:    append([]string{}, ignorePatterns...),
+		IgnoreRegex:       append([]string{}, ignoreRegex...),
+		ShowIgnored:       showIgnored,
+		NoConfig:          noConfig,
+		AllowPrivateHosts: allowPrivateHosts,
 	}
 }
 
@@ -244,7 +246,10 @@ func (r *checkRunner) checkLinksWithConfig(
 	links []checker.Link, cfg *LoadedConfig, perf *stats.Stats,
 ) ([]checker.Result, checker.Summary) {
 	perf.StartCheck()
-	c := r.env.NewChecker(cfg.BuildCheckerOptions(r.opts.Concurrency, r.opts.Timeout, r.opts.Retries))
+	c := r.env.NewChecker(cfg.BuildCheckerOptions(
+		r.opts.Concurrency, r.opts.Timeout, r.opts.Retries,
+		r.opts.AllowPrivateHosts,
+	))
 	results := c.CheckAll(links)
 	summary := checker.Summarize(results)
 	perf.EndCheck()

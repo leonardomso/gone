@@ -94,6 +94,15 @@ func (lc *LoadedConfig) GetTimeout(cliValue, defaultValue int) int {
 	return defaultValue
 }
 
+// GetAllowPrivateHosts returns the effective allow-private-hosts flag.
+// CLI true overrides config; otherwise the config value is used.
+func (lc *LoadedConfig) GetAllowPrivateHosts(cliValue bool) bool {
+	if cliValue {
+		return true
+	}
+	return lc.cfg.Check.AllowPrivateHosts
+}
+
 // GetRetries returns the effective retry count.
 // CLI overrides config if it differs from the default.
 func (lc *LoadedConfig) GetRetries(cliValue, defaultValue int) int {
@@ -161,13 +170,19 @@ func (lc *LoadedConfig) GetShowStats(cliValue bool) bool {
 }
 
 // BuildCheckerOptions creates checker.Options from config and CLI values.
-func (lc *LoadedConfig) BuildCheckerOptions(cliConcurrency, cliTimeout, cliRetries int) checker.Options {
+// cliAllowPrivate reflects the --allow-private-hosts flag; when true the
+// checker is permitted to contact loopback, private, and reserved IPs.
+func (lc *LoadedConfig) BuildCheckerOptions(
+	cliConcurrency, cliTimeout, cliRetries int,
+	cliAllowPrivate bool,
+) checker.Options {
 	defaultOpts := checker.DefaultOptions()
 
 	return defaultOpts.
 		WithConcurrency(lc.GetConcurrency(cliConcurrency, checker.DefaultConcurrency)).
 		WithTimeout(time.Duration(lc.GetTimeout(cliTimeout, int(checker.DefaultTimeout.Seconds()))) * time.Second).
-		WithMaxRetries(lc.GetRetries(cliRetries, checker.DefaultMaxRetries))
+		WithMaxRetries(lc.GetRetries(cliRetries, checker.DefaultMaxRetries)).
+		WithAllowPrivateHosts(lc.GetAllowPrivateHosts(cliAllowPrivate))
 }
 
 // BuildScanOptions creates scanner.ScanOptions from config and path.

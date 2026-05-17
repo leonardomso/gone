@@ -133,7 +133,7 @@ func TestFindAndLoad(t *testing.T) {
 		err := os.WriteFile(configPath, configContent, 0o644)
 		require.NoError(t, err)
 
-		cfg, err := FindAndLoad(tmpDir)
+		cfg, err := FindAndLoad(tmpDir, tmpDir)
 		require.NoError(t, err)
 		assert.Len(t, cfg.Ignore.Domains, 1)
 		assert.Contains(t, cfg.Ignore.Domains, "test.com")
@@ -153,8 +153,8 @@ func TestFindAndLoad(t *testing.T) {
 		err = os.WriteFile(configPath, configContent, 0o644)
 		require.NoError(t, err)
 
-		// Search from child
-		cfg, err := FindAndLoad(childDir)
+		// Search from child, with stopAt=parent — allowed to walk up.
+		cfg, err := FindAndLoad(childDir, tmpDir)
 		require.NoError(t, err)
 		assert.Len(t, cfg.Ignore.Domains, 1)
 		assert.Contains(t, cfg.Ignore.Domains, "parent.com")
@@ -165,7 +165,7 @@ func TestFindAndLoad(t *testing.T) {
 		// Create temp directory with no config
 		tmpDir := t.TempDir()
 
-		cfg, err := FindAndLoad(tmpDir)
+		cfg, err := FindAndLoad(tmpDir, tmpDir)
 		require.NoError(t, err)
 		assert.NotNil(t, cfg)
 		assert.True(t, cfg.IsEmpty())
@@ -190,10 +190,149 @@ func TestFindAndLoad(t *testing.T) {
 		require.NoError(t, err)
 
 		// Search from child - should find child config first
-		cfg, err := FindAndLoad(childDir)
+		cfg, err := FindAndLoad(childDir, tmpDir)
 		require.NoError(t, err)
 		assert.Contains(t, cfg.Ignore.Domains, "child.com")
 		assert.NotContains(t, cfg.Ignore.Domains, "parent.com")
+	})
+
+	t.Run("StopAtBoundsUpwardWalk", func(t *testing.T) {
+		t.Parallel()
+		// Layout: grandparent/parent/child, config only in grandparent.
+		// With stopAt=parent the walk should NOT pick up grandparent's config.
+		tmpDir := t.TempDir()
+		parentDir := filepath.Join(tmpDir, "parent")
+		childDir := filepath.Join(parentDir, "child")
+		require.NoError(t, os.MkdirAll(childDir, 0o755))
+
+		grandparentConfig := filepath.Join(tmpDir, DefaultConfigFileName)
+		require.NoError(t, os.WriteFile(
+			grandparentConfig,
+			[]byte("ignore:\n  domains:\n    - grandparent.com\n"),
+			0o644,
+		))
+
+		cfg, err := FindAndLoad(childDir, parentDir)
+		require.NoError(t, err)
+		assert.True(t, cfg.IsEmpty(),
+			"upward walk crossed the stopAt boundary and picked up an unrelated config")
+	})
+
+	t.Run("EmptyStopAtRestrictsToStartDir", func(t *testing.T) {
+		t.Parallel()
+		// Even with a config in the parent, an empty stopAt limits the
+		// search to startDir alone — no walk.
+		tmpDir := t.TempDir()
+		childDir := filepath.Join(tmpDir, "child")
+		require.NoError(t, os.MkdirAll(childDir, 0o755))
+
+		require.NoError(t, os.WriteFile(
+			filepath.Join(tmpDir, DefaultConfigFileName),
+			[]byte("ignore:\n  domains:\n    - parent.com\n"),
+			0o644,
+		))
+
+		cfg, err := FindAndLoad(childDir, "")
+		require.NoError(t, err)
+		assert.True(t, cfg.IsEmpty())
+	})
+
+	t.Run("StopAtUnrelatedDirIsRestrictiveNotEscape", func(t *testing.T) {
+		t.Parallel()
+		// stopAt is a directory unrelated to startDir. The implementation
+		// must NOT use it to walk somewhere arbitrary — it should fall back
+		// to restricting the search to startDir.
+		tmpDir := t.TempDir()
+		startDir := filepath.Join(tmpDir, "a")
+		unrelated := filepath.Join(tmpDir, "b")
+		require.NoError(t, os.MkdirAll(startDir, 0o755))
+		require.NoError(t, os.MkdirAll(unrelated, 0o755))
+
+		// A config in `unrelated` must NOT be loaded when starting from `a`.
+		require.NoError(t, os.WriteFile(
+			filepath.Join(unrelated, DefaultConfigFileName),
+			[]byte("ignore:\n  domains:\n    - unrelated.com\n"),
+			0o644,
+		))
+		// A config in startDir's parent (tmpDir) also must NOT be loaded
+		// because stopAt is not an ancestor.
+		require.NoError(t, os.WriteFile(
+			filepath.Join(tmpDir, DefaultConfigFileName),
+			[]byte("ignore:\n  domains:\n    - parent.com\n"),
+			0o644,
+		))
+
+		cfg, err := FindAndLoad(startDir, unrelated)
+		require.NoError(t, err)
+		assert.True(t, cfg.IsEmpty())
+	})
+
+	t.Run("StopAtPrefixCollisionRejected", func(t *testing.T) {
+		t.Parallel()
+		// /tmp/foo is NOT an ancestor of /tmp/foobar even though it's a
+		// string prefix. Guard against the substring trap.
+		tmpDir := t.TempDir()
+		fooDir := filepath.Join(tmpDir, "foo")
+		foobarDir := filepath.Join(tmpDir, "foobar")
+		require.NoError(t, os.MkdirAll(fooDir, 0o755))
+		require.NoError(t, os.MkdirAll(foobarDir, 0o755))
+
+		// Plant a config in fooDir (the "ancestor" by prefix), at tmpDir
+		// (the genuine ancestor), and inside foobarDir itself.
+		require.NoError(t, os.WriteFile(
+			filepath.Join(fooDir, DefaultConfigFileName),
+			[]byte("ignore:\n  domains:\n    - foo.com\n"),
+			0o644,
+		))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(tmpDir, DefaultConfigFileName),
+			[]byte("ignore:\n  domains:\n    - tmp.com\n"),
+			0o644,
+		))
+
+		cfg, err := FindAndLoad(foobarDir, fooDir)
+		require.NoError(t, err)
+		// fooDir is not a real ancestor of foobarDir, so the walk must be
+		// limited to foobarDir itself — which has no config.
+		assert.True(t, cfg.IsEmpty())
+	})
+
+	t.Run("StopAtEqualsStartDirNoWalk", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		childDir := filepath.Join(tmpDir, "child")
+		require.NoError(t, os.MkdirAll(childDir, 0o755))
+
+		require.NoError(t, os.WriteFile(
+			filepath.Join(tmpDir, DefaultConfigFileName),
+			[]byte("ignore:\n  domains:\n    - parent.com\n"),
+			0o644,
+		))
+
+		cfg, err := FindAndLoad(childDir, childDir)
+		require.NoError(t, err)
+		assert.True(t, cfg.IsEmpty())
+	})
+
+	t.Run("IsAncestorOrEqual", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			ancestor, descendant string
+			want                 bool
+		}{
+			{"/a", "/a", true},
+			{"/a", "/a/b", true},
+			{"/a", "/a/b/c", true},
+			{"/a", "/ab", false}, // prefix collision
+			{"/a", "/b", false},
+			{"/a/b", "/a", false}, // wrong direction
+			{"/", "/anywhere", true},
+		}
+		for _, tt := range tests {
+			got := isAncestorOrEqual(tt.ancestor, tt.descendant)
+			assert.Equal(t, tt.want, got,
+				"isAncestorOrEqual(%q, %q)", tt.ancestor, tt.descendant)
+		}
 	})
 }
 
@@ -470,6 +609,95 @@ func TestConfig_Validate(t *testing.T) {
 		err := cfg.Validate()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "retries")
+	})
+
+	t.Run("ConcurrencyAboveMax", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Concurrency: MaxConcurrency + 1},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.concurrency")
+		assert.Contains(t, err.Error(), "1024")
+	})
+
+	t.Run("ConcurrencyAtMaxOK", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Concurrency: MaxConcurrency},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("TimeoutAboveMax", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Timeout: MaxTimeout + 1},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.timeout")
+		assert.Contains(t, err.Error(), "300")
+	})
+
+	t.Run("TimeoutAtMaxOK", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Timeout: MaxTimeout},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("RetriesAboveMax", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Retries: MaxRetries + 1},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.retries")
+		assert.Contains(t, err.Error(), "10")
+	})
+
+	t.Run("RetriesAtMaxOK", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Retries: MaxRetries},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("HugeConcurrencyRejected", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Concurrency: 100000},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.concurrency")
+	})
+
+	t.Run("HugeTimeoutRejected", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Timeout: 86400},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.timeout")
+	})
+
+	t.Run("AllBoundsTogether", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{
+				Concurrency: MaxConcurrency,
+				Timeout:     MaxTimeout,
+				Retries:     MaxRetries,
+			},
+		}
+		assert.NoError(t, cfg.Validate())
 	})
 
 	t.Run("InvalidOutputFormat", func(t *testing.T) {

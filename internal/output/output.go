@@ -3,11 +3,11 @@ package output
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/leonardomso/gone/internal/atomicfile"
 	"github.com/leonardomso/gone/internal/checker"
 )
 
@@ -141,7 +141,7 @@ func WriteToFile(report *Report, filename string) error {
 		return fmt.Errorf("formatting report: %w", err)
 	}
 
-	if err := os.WriteFile(filename, data, 0o600); err != nil {
+	if err := atomicfile.WriteFile(filename, data, 0o600); err != nil {
 		return fmt.Errorf("writing file: %w", err)
 	}
 

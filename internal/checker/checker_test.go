@@ -539,7 +539,8 @@ func TestChecker_CheckAll_200OK(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL, FilePath: "test.md", Line: 1}}
 
 	results := checker.CheckAll(links)
@@ -557,7 +558,8 @@ func TestChecker_CheckAll_404NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -575,7 +577,8 @@ func TestChecker_CheckAll_500ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -599,7 +602,8 @@ func TestChecker_CheckAll_HeadFallbackToGet(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -622,7 +626,8 @@ func TestChecker_CheckAll_Redirect301(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)
@@ -647,7 +652,8 @@ func TestChecker_CheckAll_Redirect302(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)
@@ -676,7 +682,8 @@ func TestChecker_CheckAll_RedirectChain(t *testing.T) {
 	}))
 	defer serverA.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: serverA.URL}}
 
 	results := checker.CheckAll(links)
@@ -697,7 +704,12 @@ func TestChecker_CheckAll_TooManyRedirects(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0).WithMaxRedirects(3))
+	checker := New(DefaultOptions().
+		WithAllowPrivateHosts(true).
+		WithConcurrency(1).
+		WithMaxRetries(0).
+		WithMaxRedirects(3))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -720,7 +732,8 @@ func TestChecker_CheckAll_RedirectToDead(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)
@@ -737,7 +750,8 @@ func TestChecker_CheckAll_403Blocked(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -761,7 +775,8 @@ func TestChecker_CheckAll_403ThenOKWithBrowserHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -778,7 +793,8 @@ func TestChecker_CheckAll_Duplicates(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{
 		{URL: server.URL, FilePath: "a.md", Line: 1},
 		{URL: server.URL, FilePath: "b.md", Line: 5},  // Duplicate
@@ -817,7 +833,8 @@ func TestChecker_CheckAll_MultipleDifferentURLs(t *testing.T) {
 	}))
 	defer server2.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(2).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(2).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{
 		{URL: server1.URL},
 		{URL: server2.URL},
@@ -850,7 +867,8 @@ func TestChecker_CheckAll_RetryOn5xx(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(3))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(3))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -874,7 +892,8 @@ func TestChecker_CheckAll_RetryOn429(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(2))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(2))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -893,7 +912,8 @@ func TestChecker_CheckAll_NoRetryOn404(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(3))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(3))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -912,7 +932,8 @@ func TestChecker_Check_ContextCanceled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithTimeout(10 * time.Second))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithTimeout(10 * time.Second))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -937,7 +958,8 @@ func TestChecker_Check_ContextCanceled(t *testing.T) {
 func TestChecker_CheckAll_EmptyLinks(t *testing.T) {
 	t.Parallel()
 
-	checker := New(DefaultOptions())
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true))
+	t.Cleanup(checker.Close)
 	results := checker.CheckAll(nil)
 	assert.Empty(t, results)
 
@@ -953,7 +975,8 @@ func TestChecker_CheckAll_PreservesLinkMetadata(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1))
+	t.Cleanup(checker.Close)
 	links := []Link{{
 		URL:      server.URL,
 		FilePath: "README.md",
@@ -978,7 +1001,12 @@ func TestChecker_CheckAll_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithTimeout(100 * time.Millisecond).WithMaxRetries(0))
+	checker := New(DefaultOptions().
+		WithAllowPrivateHosts(true).
+		WithConcurrency(1).
+		WithTimeout(100 * time.Millisecond).
+		WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -991,7 +1019,8 @@ func TestChecker_CheckAll_Timeout(t *testing.T) {
 func TestChecker_CheckAll_InvalidURL(t *testing.T) {
 	t.Parallel()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: "not-a-valid-url"}}
 
 	results := checker.CheckAll(links)
@@ -1004,7 +1033,12 @@ func TestChecker_CheckAll_ConnectionRefused(t *testing.T) {
 	t.Parallel()
 
 	// Port that nothing is listening on
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0).WithTimeout(1 * time.Second))
+	checker := New(DefaultOptions().
+		WithAllowPrivateHosts(true).
+		WithConcurrency(1).
+		WithMaxRetries(0).
+		WithTimeout(1 * time.Second))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: "http://127.0.0.1:59999"}}
 
 	results := checker.CheckAll(links)
@@ -1043,7 +1077,8 @@ func TestChecker_CheckAll_Concurrency(t *testing.T) {
 		links[i] = Link{URL: server.URL + "/" + string(rune('a'+i))}
 	}
 
-	checker := New(DefaultOptions().WithConcurrency(5).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(5).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	results := checker.CheckAll(links)
 
 	assert.Len(t, results, 20)
@@ -1216,7 +1251,8 @@ func TestChecker_CheckAll_VariousStatusCodes(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+			checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+			t.Cleanup(checker.Close)
 			links := []Link{{URL: server.URL}}
 
 			results := checker.CheckAll(links)
@@ -1252,7 +1288,8 @@ func TestChecker_CheckAll_RedirectTo403ThenOKWithBrowserHeaders(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)
@@ -1278,7 +1315,8 @@ func TestChecker_CheckAll_RedirectTo403StillBlocked(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)
@@ -1302,7 +1340,8 @@ func TestChecker_CheckAll_501NotImplemented(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -1328,7 +1367,8 @@ func TestChecker_CheckAll_RedirectWithRelativeLocation(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL + "/start"}}
 
 	results := checker.CheckAll(links)
@@ -1349,7 +1389,8 @@ func TestChecker_CheckAll_RedirectWithInvalidLocation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL}}
 
 	results := checker.CheckAll(links)
@@ -1419,7 +1460,8 @@ func TestChecker_CheckAll_RedirectToSameHost(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: server.URL + "/a"}}
 
 	results := checker.CheckAll(links)
@@ -1443,7 +1485,8 @@ func TestChecker_CheckAll_307TemporaryRedirect(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)
@@ -1466,7 +1509,8 @@ func TestChecker_CheckAll_308PermanentRedirect(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	checker := New(DefaultOptions().WithConcurrency(1).WithMaxRetries(0))
+	checker := New(DefaultOptions().WithAllowPrivateHosts(true).WithConcurrency(1).WithMaxRetries(0))
+	t.Cleanup(checker.Close)
 	links := []Link{{URL: redirectServer.URL}}
 
 	results := checker.CheckAll(links)

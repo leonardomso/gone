@@ -22,10 +22,11 @@ var (
 	fixStrictMode bool
 
 	// Ignore flags (shared with check).
-	fixIgnoreDomains  []string
-	fixIgnorePatterns []string
-	fixIgnoreRegex    []string
-	fixNoConfig       bool
+	fixIgnoreDomains     []string
+	fixIgnorePatterns    []string
+	fixIgnoreRegex       []string
+	fixNoConfig          bool
+	fixAllowPrivateHosts bool
 )
 
 // fixCmd represents the fix command.
@@ -100,6 +101,11 @@ func init() {
 		"Regex patterns to ignore (can be repeated)")
 	fixCmd.Flags().BoolVar(&fixNoConfig, "no-config", false,
 		"Skip loading .gonerc.yaml config file")
+
+	// Security options
+	fixCmd.Flags().BoolVar(&fixAllowPrivateHosts, "allow-private-hosts", false,
+		"Allow requests to loopback, private, link-local and reserved IP "+
+			"ranges. Default is to block them to prevent SSRF.")
 }
 
 // runFix is the main entry point for the fix command.
