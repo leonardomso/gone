@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6](https://github.com/leonardomso/gone/compare/v0.1.5...v0.1.6) (2026-05-17)
+
+
+### Features
+
+* **atomicfile:** write files atomically via temp file + fsync + rename ([9008446](https://github.com/leonardomso/gone/commit/9008446050801987a0c23f2872adb24903b1dddc))
+
+
+### Bug Fixes
+
+* **cmd:** align interactive mode and clean lint ([bd70ce2](https://github.com/leonardomso/gone/commit/bd70ce2491e0fbe2e2c7799052f6e1ea9f67688f))
+* **cmd:** align interactive mode and clean lint ([2d369ed](https://github.com/leonardomso/gone/commit/2d369ed060f2e5c1cf40cf18d0869d5178d12e33))
+* **cmd:** harden cli test coverage paths ([a7e6eef](https://github.com/leonardomso/gone/commit/a7e6eef5672d36de300c82372c841f0d368c601c))
+* **cmd:** harden cli test coverage paths ([7c93ad9](https://github.com/leonardomso/gone/commit/7c93ad9c8e53764b081547417d39a2237ec1967b))
+* **config:** bound FindAndLoad's upward walk via required stopAt arg ([c7cce3e](https://github.com/leonardomso/gone/commit/c7cce3eaa11d04bba50dddf30c5dee9bbebcc761))
+* **config:** enforce upper bounds on check.concurrency, timeout and retries ([3941de8](https://github.com/leonardomso/gone/commit/3941de89d8c89c877a84e899b574cfdb18e69ef9))
+* **fixer:** replace URLs only at URL boundaries ([e7d08ff](https://github.com/leonardomso/gone/commit/e7d08ff582f924f2f9d6c9332a3074ed9ea0c771))
+* **lint:** satisfy gocritic, gofmt, and revive line-length ([33b49be](https://github.com/leonardomso/gone/commit/33b49be3ab74b14c034d2d33448d4349da6af0ff))
+* **security:** block SSRF to private, loopback, link-local and metadata ranges ([15f57df](https://github.com/leonardomso/gone/commit/15f57df492d42c1f068eef5de5f034a9b8209e5b))
+* **security:** skip symlinks in scanner and refuse symlink writes in fixer ([738de49](https://github.com/leonardomso/gone/commit/738de4947c1cc0db8a7b07934721b20ca7ca1790))
+
+
+### Code Refactoring
+
+* **cmd:** improve reliability and testability ([7206e09](https://github.com/leonardomso/gone/commit/7206e0908a215e8e867d04ab2b5803b50820ba40))
+* **cmd:** improve reliability and testability ([6f05278](https://github.com/leonardomso/gone/commit/6f05278339e5fe0197647cf08a4c1bb9af33dc35))
+
+
+### Tests
+
+* **checker:** close HTTP client to avoid persistConn goleak ([788e82d](https://github.com/leonardomso/gone/commit/788e82dadba4d523f175627740804be3c2c98cbc))
+
+
+### CI/CD
+
+* fix bounded fuzz workflow ([3f326b8](https://github.com/leonardomso/gone/commit/3f326b853bfca9046b1eab1d54921e2ed4e67ad0))
+* fix bounded fuzz workflow ([7eed113](https://github.com/leonardomso/gone/commit/7eed113090cf75432e6774cee69a6560f19331ad))
+
+
+### Miscellaneous
+
+* **deps:** bump Go to 1.26.3 and update dependencies ([b07e4d8](https://github.com/leonardomso/gone/commit/b07e4d8864d40e542d6ad20f948b895ba5c4de59))
+
 ## [0.1.5](https://github.com/leonardomso/gone/compare/v0.1.4...v0.1.5) (2026-01-03)
 
 
