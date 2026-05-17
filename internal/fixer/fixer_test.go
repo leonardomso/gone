@@ -3,6 +3,7 @@ package fixer
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -567,6 +568,52 @@ func TestFixer_ApplyToFile_FileNotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.NotNil(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "reading file")
+}
+
+func TestFixer_ApplyToFile_RefusesSymlink(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+
+	// Simulates the attack scenario: an attacker-controlled repository
+	// contains a symlink whose target sits outside the workspace. The fixer
+	// must refuse to follow it, otherwise os.WriteFile would overwrite the
+	// target file on the victim's machine.
+	workspace := t.TempDir()
+	outsideDir := t.TempDir()
+
+	outsideFile := filepath.Join(outsideDir, "victim.md")
+	originalContent := "Important file. https://old.com is referenced here."
+	require.NoError(t, os.WriteFile(outsideFile, []byte(originalContent), 0o600))
+
+	linkPath := filepath.Join(workspace, "innocent.md")
+	require.NoError(t, os.Symlink(outsideFile, linkPath))
+
+	changes := FileChanges{
+		FilePath: linkPath,
+		Fixes: []Fix{
+			{
+				FilePath: linkPath,
+				OldURL:   "https://old.com",
+				NewURL:   "https://attacker-controlled.example",
+			},
+		},
+	}
+
+	f := New()
+	result, err := f.ApplyToFile(changes)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+	assert.Equal(t, 0, result.Applied)
+
+	// The file outside the workspace must be byte-identical to its
+	// original content.
+	got, rerr := os.ReadFile(outsideFile)
+	require.NoError(t, rerr)
+	assert.Equal(t, originalContent, string(got), "symlink target must not be modified")
 }
 
 func TestFixer_ApplyToFile_NoChanges(t *testing.T) {

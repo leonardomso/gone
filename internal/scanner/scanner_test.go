@@ -163,6 +163,36 @@ func TestFindFiles(t *testing.T) {
 		assert.Contains(t, files[0], "root.md")
 	})
 
+	t.Run("SymlinkedFileIsSkipped", func(t *testing.T) {
+		t.Parallel()
+
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks require elevated privileges on Windows")
+		}
+
+		// A symlinked file inside the scan root that points to a file
+		// outside the root must not be returned. Returning it would allow
+		// later read/write operations to follow the link and escape the
+		// workspace.
+		workspace := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(workspace, "real.md"), []byte("# Real"), 0o644))
+
+		outside := t.TempDir()
+		outsideFile := filepath.Join(outside, "secret.md")
+		require.NoError(t, os.WriteFile(outsideFile, []byte("# Secret"), 0o644))
+
+		linkPath := filepath.Join(workspace, "linked.md")
+		require.NoError(t, os.Symlink(outsideFile, linkPath))
+
+		files, err := FindFiles(workspace, []string{".md"})
+		require.NoError(t, err)
+		assert.Len(t, files, 1)
+		assert.Contains(t, files[0], "real.md")
+		for _, f := range files {
+			assert.NotEqual(t, linkPath, f, "symlinked file must not be returned")
+		}
+	})
+
 	t.Run("UnreadableDirectoryReturnsError", func(t *testing.T) {
 		t.Parallel()
 

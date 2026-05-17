@@ -41,8 +41,13 @@ func FindFiles(root string, extensions []string) ([]string, error) {
 			return filepath.SkipDir
 		}
 
-		// Check if this file has a matching extension
+		// Check if this file has a matching extension.
+		// Skip symlinks so that subsequent reads/writes cannot escape the
+		// scan root by following a link to a file elsewhere on disk.
 		if !d.IsDir() {
+			if d.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
 			ext := strings.ToLower(filepath.Ext(d.Name()))
 			if normalizedExts[ext] {
 				files = append(files, path)

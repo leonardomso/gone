@@ -288,6 +288,15 @@ func (*Fixer) ApplyToFile(fc FileChanges) (*FixResult, error) {
 		ChangedURLs: []URLChange{},
 	}
 
+	// Refuse to operate on symlinks. The scanner already filters them, but
+	// re-checking here prevents path-traversal in any code path that builds
+	// FileChanges from another source: a symlink inside the workspace could
+	// otherwise be used to read or overwrite a file elsewhere on disk.
+	if info, lerr := os.Lstat(fc.FilePath); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+		result.Error = fmt.Errorf("refusing to fix symlinked path: %s", fc.FilePath)
+		return result, result.Error
+	}
+
 	// Read file content
 	content, err := os.ReadFile(fc.FilePath)
 	if err != nil {
@@ -335,8 +344,8 @@ func (*Fixer) ApplyToFile(fc FileChanges) (*FixResult, error) {
 		return result, nil
 	}
 
-	// Write modified content back to file
-	//nolint:gosec // fc.FilePath originates from files already scanned in the current workspace
+	// Write modified content back to file. The scanner rejects symlinks, so
+	// fc.FilePath is expected to point to a regular file inside the scan root.
 	err = os.WriteFile(fc.FilePath, []byte(modifiedContent), 0o600)
 	if err != nil {
 		result.Error = fmt.Errorf("writing file: %w", err)
