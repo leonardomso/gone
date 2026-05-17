@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/leonardomso/gone/internal/checker"
 	"github.com/leonardomso/gone/internal/parser"
@@ -273,6 +274,96 @@ func (*Fixer) Preview(changes []FileChanges) string {
 	return b.String()
 }
 
+// replaceBoundedURL replaces every occurrence of oldURL in content with newURL
+// only when the match is bounded on both sides by a character that cannot be
+// part of a URL (or by the start/end of the content). This prevents corrupting
+// longer URLs that contain oldURL as a substring: rewriting
+// https://example.com/a inside https://example.com/abc would otherwise produce
+// https://example.com/newabc.
+//
+// The boundary rule uses RFC 3986 unreserved + reserved + pct-encoded as the
+// "could be part of a URL" character set.
+func replaceBoundedURL(content, oldURL, newURL string) (string, int) {
+	if oldURL == "" {
+		return content, 0
+	}
+
+	var b strings.Builder
+	b.Grow(len(content))
+
+	count := 0
+	cursor := 0
+	for cursor < len(content) {
+		idx := strings.Index(content[cursor:], oldURL)
+		if idx < 0 {
+			b.WriteString(content[cursor:])
+			break
+		}
+
+		matchStart := cursor + idx
+		matchEnd := matchStart + len(oldURL)
+
+		b.WriteString(content[cursor:matchStart])
+
+		if isExactURLMatch(content, matchStart, matchEnd) {
+			b.WriteString(newURL)
+			count++
+		} else {
+			b.WriteString(oldURL)
+		}
+
+		cursor = matchEnd
+	}
+
+	return b.String(), count
+}
+
+// isExactURLMatch reports whether content[start:end] is a full URL token —
+// i.e. the bytes immediately before and after are not URL-continuation chars.
+func isExactURLMatch(content string, start, end int) bool {
+	if start > 0 {
+		r, _ := utf8.DecodeLastRuneInString(content[:start])
+		if isURLContinuationRune(r) {
+			return false
+		}
+	}
+	if end < len(content) {
+		r, _ := utf8.DecodeRuneInString(content[end:])
+		if isURLContinuationRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// isURLContinuationRune reports whether r could extend a URL match — i.e. if
+// r sits immediately after the matched span, the match is a prefix of a
+// longer URL and must not be replaced.
+//
+// The set is intentionally narrower than RFC 3986's full reserved+unreserved:
+// characters like ')', ']', ',', ';', '\'' technically appear in some URLs
+// but in markdown, JSON, YAML and HTML they act as terminators. Treating them
+// as continuation chars would prevent ALL real fixes ('[t](https://x.com)'
+// would refuse to replace because of the trailing ')'). The chosen set
+// covers what realistically continues a URL in the wild: path/query/fragment
+// chars and percent-encoding.
+func isURLContinuationRune(r rune) bool {
+	switch {
+	case r >= 'A' && r <= 'Z':
+		return true
+	case r >= 'a' && r <= 'z':
+		return true
+	case r >= '0' && r <= '9':
+		return true
+	}
+	switch r {
+	case '-', '.', '_', '~',
+		'/', '?', '#', '&', '=', '%', ':', '@', '+':
+		return true
+	}
+	return false
+}
+
 // truncateURL shortens a URL for display.
 func truncateURL(url string, maxLen int) string {
 	if len(url) <= maxLen {
@@ -314,29 +405,22 @@ func (*Fixer) ApplyToFile(fc FileChanges) (*FixResult, error) {
 	// as long as URLs are unique
 
 	for _, fix := range fc.Fixes {
-		// Count occurrences before replacement
-		countBefore := strings.Count(modifiedContent, fix.OldURL)
-
-		if countBefore == 0 {
+		// Replace only exact-URL occurrences. A plain strings.ReplaceAll
+		// would corrupt longer URLs that happen to start with OldURL (e.g.
+		// rewriting https://x.com/a inside https://x.com/abc).
+		updated, replaced := replaceBoundedURL(modifiedContent, fix.OldURL, fix.NewURL)
+		if replaced == 0 {
 			result.Skipped++
 			continue
 		}
 
-		// Replace all occurrences of the old URL with the new URL
-		modifiedContent = strings.ReplaceAll(modifiedContent, fix.OldURL, fix.NewURL)
-
-		// Verify replacement worked
-		countAfter := strings.Count(modifiedContent, fix.OldURL)
-		replaced := countBefore - countAfter
-
-		if replaced > 0 {
-			result.Applied += replaced
-			result.ChangedURLs = append(result.ChangedURLs, URLChange{
-				Line:   fix.Line,
-				OldURL: fix.OldURL,
-				NewURL: fix.NewURL,
-			})
-		}
+		modifiedContent = updated
+		result.Applied += replaced
+		result.ChangedURLs = append(result.ChangedURLs, URLChange{
+			Line:   fix.Line,
+			OldURL: fix.OldURL,
+			NewURL: fix.NewURL,
+		})
 	}
 
 	// Only write if content changed

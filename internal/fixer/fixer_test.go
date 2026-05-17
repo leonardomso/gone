@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1078,4 +1079,369 @@ func TestFixer_Preview_MultipleFixes(t *testing.T) {
 	assert.Contains(t, preview, "Found 3 fixable redirect(s) across 2 file(s)")
 	assert.Contains(t, preview, "a.md (2 fix(es))")
 	assert.Contains(t, preview, "b.md (1 fix(es))")
+}
+
+// =============================================================================
+// Bounded URL Replacement Tests
+// =============================================================================
+
+func TestReplaceBoundedURL_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		content     string
+		oldURL      string
+		newURL      string
+		wantContent string
+		wantCount   int
+	}{
+		{
+			name:        "exact match in markdown link",
+			content:     "[docs](https://old.com)",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "[docs](https://new.com)",
+			wantCount:   1,
+		},
+		{
+			name:        "exact match in plain text followed by space",
+			content:     "see https://old.com for more",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "see https://new.com for more",
+			wantCount:   1,
+		},
+		{
+			name:        "exact match at end of string",
+			content:     "https://old.com",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "https://new.com",
+			wantCount:   1,
+		},
+		{
+			name:        "exact match at start of string",
+			content:     "https://old.com is the link",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "https://new.com is the link",
+			wantCount:   1,
+		},
+		{
+			name:        "match is prefix of longer URL via /path - must NOT replace",
+			content:     "[longer](https://example.com/abc)",
+			oldURL:      "https://example.com/a",
+			newURL:      "https://new.com/a",
+			wantContent: "[longer](https://example.com/abc)",
+			wantCount:   0,
+		},
+		{
+			name:        "match is prefix of longer URL via alnum - must NOT replace",
+			content:     "https://example.comX",
+			oldURL:      "https://example.com",
+			newURL:      "https://new.com",
+			wantContent: "https://example.comX",
+			wantCount:   0,
+		},
+		{
+			name:        "match is prefix of longer URL via path char - must NOT replace",
+			content:     "https://example.com/abc",
+			oldURL:      "https://example.com",
+			newURL:      "https://new.com",
+			wantContent: "https://example.com/abc",
+			wantCount:   0,
+		},
+		{
+			name:        "match is prefix of longer URL via query - must NOT replace",
+			content:     "https://example.com?foo=1",
+			oldURL:      "https://example.com",
+			newURL:      "https://new.com",
+			wantContent: "https://example.com?foo=1",
+			wantCount:   0,
+		},
+		{
+			name:        "match is prefix of longer URL via fragment - must NOT replace",
+			content:     "https://example.com#section",
+			oldURL:      "https://example.com",
+			newURL:      "https://new.com",
+			wantContent: "https://example.com#section",
+			wantCount:   0,
+		},
+		{
+			name:        "match is prefix of longer URL via dot - must NOT replace",
+			content:     "https://example.comx",
+			oldURL:      "https://example.co",
+			newURL:      "https://new.co",
+			wantContent: "https://example.comx",
+			wantCount:   0,
+		},
+		{
+			name:        "two occurrences both bounded - replace both",
+			content:     "see https://old.com and again https://old.com here",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "see https://new.com and again https://new.com here",
+			wantCount:   2,
+		},
+		{
+			name:        "mixed: one valid, one prefix-of-longer - replace only valid",
+			content:     "valid (https://x.com/a), longer (https://x.com/abc)",
+			oldURL:      "https://x.com/a",
+			newURL:      "https://y.com/a",
+			wantContent: "valid (https://y.com/a), longer (https://x.com/abc)",
+			wantCount:   1,
+		},
+		{
+			name:        "URL inside JSON string with quotes",
+			content:     `{"url": "https://old.com"}`,
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: `{"url": "https://new.com"}`,
+			wantCount:   1,
+		},
+		{
+			name:        "URL terminated by comma",
+			content:     "links: https://old.com, https://other.com",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "links: https://new.com, https://other.com",
+			wantCount:   1,
+		},
+		{
+			name:        "URL terminated by semicolon",
+			content:     "see https://old.com; really.",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "see https://new.com; really.",
+			wantCount:   1,
+		},
+		{
+			name:        "URL terminated by newline",
+			content:     "see https://old.com\nnext line",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "see https://new.com\nnext line",
+			wantCount:   1,
+		},
+		{
+			name:        "URL terminated by angle bracket HTML",
+			content:     `<a href="https://old.com">link</a>`,
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: `<a href="https://new.com">link</a>`,
+			wantCount:   1,
+		},
+		{
+			name:        "URL terminated by closing markdown bracket",
+			content:     "[link][https://old.com]",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "[link][https://new.com]",
+			wantCount:   1,
+		},
+		{
+			name:        "no match at all",
+			content:     "no urls here",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "no urls here",
+			wantCount:   0,
+		},
+		{
+			name:        "empty oldURL returns content unchanged",
+			content:     "anything",
+			oldURL:      "",
+			newURL:      "x",
+			wantContent: "anything",
+			wantCount:   0,
+		},
+		{
+			name:        "empty content returns empty",
+			content:     "",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "",
+			wantCount:   0,
+		},
+		{
+			name:        "URL with trailing slash followed by alnum - prefix must NOT replace",
+			content:     "https://x.com/path/abc",
+			oldURL:      "https://x.com/path/",
+			newURL:      "https://y.com/path/",
+			wantContent: "https://x.com/path/abc",
+			wantCount:   0,
+		},
+		{
+			name:        "URL with query string exact match",
+			content:     "[q](https://x.com/?foo=1)",
+			oldURL:      "https://x.com/?foo=1",
+			newURL:      "https://y.com/?foo=1",
+			wantContent: "[q](https://y.com/?foo=1)",
+			wantCount:   1,
+		},
+		{
+			name:        "query string with extra &param - must NOT replace",
+			content:     "https://x.com/?foo=1&bar=2",
+			oldURL:      "https://x.com/?foo=1",
+			newURL:      "https://y.com/?foo=1",
+			wantContent: "https://x.com/?foo=1&bar=2",
+			wantCount:   0,
+		},
+		{
+			name:        "preceding url-continuation char - must NOT replace (defensive)",
+			content:     "xhttps://old.com",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "xhttps://old.com",
+			wantCount:   0,
+		},
+		{
+			name:        "preceding url-continuation digit - must NOT replace",
+			content:     "9https://old.com",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "9https://old.com",
+			wantCount:   0,
+		},
+		{
+			name:        "URL terminated by tab",
+			content:     "url:\thttps://old.com\tend",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "url:\thttps://new.com\tend",
+			wantCount:   1,
+		},
+		{
+			name:        "URL terminated by unicode (CJK)",
+			content:     "見る https://old.com です",
+			oldURL:      "https://old.com",
+			newURL:      "https://new.com",
+			wantContent: "見る https://new.com です",
+			wantCount:   1,
+		},
+		{
+			name:        "URL with percent encoding boundary",
+			content:     "https://x.com/path%20here",
+			oldURL:      "https://x.com/path",
+			newURL:      "https://y.com/path",
+			wantContent: "https://x.com/path%20here",
+			wantCount:   0,
+		},
+		{
+			name:        "occurrence inside a longer URL plus a separate exact occurrence",
+			content:     "[a](https://x.com/abc) and [b](https://x.com/a)",
+			oldURL:      "https://x.com/a",
+			newURL:      "https://y.com/a",
+			wantContent: "[a](https://x.com/abc) and [b](https://y.com/a)",
+			wantCount:   1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, count := replaceBoundedURL(tt.content, tt.oldURL, tt.newURL)
+			assert.Equal(t, tt.wantContent, got, "content mismatch")
+			assert.Equal(t, tt.wantCount, count, "count mismatch")
+		})
+	}
+}
+
+func TestApplyToFile_DoesNotCorruptLongerURL(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "doc.md")
+	original := "Short: [a](https://x.com/a)\nLonger: [b](https://x.com/abc)\n"
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
+
+	fc := FileChanges{
+		FilePath: path,
+		Fixes: []Fix{
+			{
+				FilePath: path,
+				OldURL:   "https://x.com/a",
+				NewURL:   "https://y.com/a",
+				Line:     1,
+			},
+		},
+	}
+
+	f := New()
+	result, err := f.ApplyToFile(fc)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Applied)
+	assert.Equal(t, 0, result.Skipped)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	// First (exact) URL must be rewritten; second (longer) URL must stay intact.
+	assert.Contains(t, string(got), "[a](https://y.com/a)")
+	assert.Contains(t, string(got), "[b](https://x.com/abc)")
+	assert.NotContains(t, string(got), "https://y.com/abc")
+}
+
+func TestApplyToFile_SkipsWhenAllOccurrencesAreSubstringPrefixes(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "doc.md")
+	// OldURL appears only as a prefix of a longer URL.
+	original := "Longer: [b](https://x.com/abc)\n"
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
+
+	fc := FileChanges{
+		FilePath: path,
+		Fixes: []Fix{
+			{
+				FilePath: path,
+				OldURL:   "https://x.com/a",
+				NewURL:   "https://y.com/a",
+				Line:     1,
+			},
+		},
+	}
+
+	f := New()
+	result, err := f.ApplyToFile(fc)
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.Applied)
+	assert.Equal(t, 1, result.Skipped)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(got))
+}
+
+func TestApplyToFile_HandlesMultipleOccurrencesOfSameURL(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "doc.md")
+	original := "[a](https://old.com) and also <https://old.com> here.\n"
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
+
+	fc := FileChanges{
+		FilePath: path,
+		Fixes: []Fix{
+			{
+				FilePath:    path,
+				OldURL:      "https://old.com",
+				NewURL:      "https://new.com",
+				Line:        1,
+				Occurrences: 2,
+			},
+		},
+	}
+
+	f := New()
+	result, err := f.ApplyToFile(fc)
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Applied)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "https://old.com")
+	assert.Equal(t, 2, strings.Count(string(got), "https://new.com"))
 }
