@@ -472,6 +472,95 @@ func TestConfig_Validate(t *testing.T) {
 		assert.Contains(t, err.Error(), "retries")
 	})
 
+	t.Run("ConcurrencyAboveMax", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Concurrency: MaxConcurrency + 1},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.concurrency")
+		assert.Contains(t, err.Error(), "1024")
+	})
+
+	t.Run("ConcurrencyAtMaxOK", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Concurrency: MaxConcurrency},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("TimeoutAboveMax", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Timeout: MaxTimeout + 1},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.timeout")
+		assert.Contains(t, err.Error(), "300")
+	})
+
+	t.Run("TimeoutAtMaxOK", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Timeout: MaxTimeout},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("RetriesAboveMax", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Retries: MaxRetries + 1},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.retries")
+		assert.Contains(t, err.Error(), "10")
+	})
+
+	t.Run("RetriesAtMaxOK", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Retries: MaxRetries},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("HugeConcurrencyRejected", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Concurrency: 100000},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.concurrency")
+	})
+
+	t.Run("HugeTimeoutRejected", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{Timeout: 86400},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "check.timeout")
+	})
+
+	t.Run("AllBoundsTogether", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{
+			Check: CheckConfig{
+				Concurrency: MaxConcurrency,
+				Timeout:     MaxTimeout,
+				Retries:     MaxRetries,
+			},
+		}
+		assert.NoError(t, cfg.Validate())
+	})
+
 	t.Run("InvalidOutputFormat", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{

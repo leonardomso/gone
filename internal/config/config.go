@@ -116,6 +116,17 @@ type IgnoreConfig struct {
 // validOutputFormats lists all valid output format values.
 var validOutputFormats = []string{"json", "yaml", "xml", "junit", "markdown"}
 
+// Upper bounds for check settings. These exist to keep a single
+// .gonerc.yaml typo (e.g. concurrency: 100000, timeout: 99999) from spawning
+// a fork-bomb's worth of HTTP workers or hanging a CI job for a day. The
+// limits are generous — well above any legitimate use — and are validated at
+// load time so the failure is loud and immediate.
+const (
+	MaxConcurrency = 1024
+	MaxTimeout     = 300 // seconds
+	MaxRetries     = 10
+)
+
 // validFileTypes lists all valid file type values.
 // This is duplicated here to avoid circular dependency with parser package.
 var validFileTypes = []string{"md", "json", "yaml", "toml", "xml"}
@@ -189,11 +200,20 @@ func (c *Config) Validate() error {
 	if c.Check.Concurrency < 0 {
 		return fmt.Errorf("check.concurrency must be >= 0, got %d", c.Check.Concurrency)
 	}
+	if c.Check.Concurrency > MaxConcurrency {
+		return fmt.Errorf("check.concurrency must be <= %d, got %d", MaxConcurrency, c.Check.Concurrency)
+	}
 	if c.Check.Timeout < 0 {
 		return fmt.Errorf("check.timeout must be >= 0, got %d", c.Check.Timeout)
 	}
+	if c.Check.Timeout > MaxTimeout {
+		return fmt.Errorf("check.timeout must be <= %d seconds, got %d", MaxTimeout, c.Check.Timeout)
+	}
 	if c.Check.Retries < 0 {
 		return fmt.Errorf("check.retries must be >= 0, got %d", c.Check.Retries)
+	}
+	if c.Check.Retries > MaxRetries {
+		return fmt.Errorf("check.retries must be <= %d, got %d", MaxRetries, c.Check.Retries)
 	}
 
 	// Validate output format
